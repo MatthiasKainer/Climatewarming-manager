@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createGame, finance, ACTIONS, EVENTS, START_BUDGET, DAILY_INCOME, MAX_ACTIONS, available, takeAction, advance, chooseEvent, DAYS, grade,routeCondition,SCENARIOS,outlook} from '../src/engine.js';
+import {createGame, finance, ACTIONS, EVENTS, START_BUDGET, DAILY_INCOME, MAX_ACTIONS, available, takeAction, advance, chooseEvent, DAYS, grade,routeCondition,SCENARIOS,outlook,endCriteria,finalDayPreview} from '../src/engine.js';
 import {run} from './balance.mjs';
 import {STATES,CITIES,CITY_BY_NAME,ROUTES,NODES} from '../src/geography.js';
 
@@ -196,4 +196,45 @@ test('German geometry has 16 real federal states, cities, and a real corridor gr
  for(const state of STATES){assert.match(state.d,/^M\d/);assert.ok(state.d.length>40)}
  for(const city of CITIES){assert.ok(city.x>=0&&city.x<=490);assert.ok(city.y>=0&&city.y<=620)}
  for(const road of ROUTES){for(const name of road.cities)assert.ok(CITY_BY_NAME[name],`${road.id} missing ${name}`)}
+});
+
+
+test('day-18 screenshot with 45.2 % average is a narrow survival, not a sudden loss',()=>{
+ const s=createGame(20261107);
+ // Recreate the visible terminal values from the reported screenshot.
+ Object.assign(s.metrics,{water:39,river:33,power:38,roads:60,logistics:50,health:51,food:51,fire:48,trust:37});
+ s.fires=0;s.flood=0;
+ const result=endCriteria(s);
+ assert.ok(result.avg<47.5, 'quality target missed');
+ assert.ok(result.pass, 'the actual survival thresholds are all satisfied');
+ assert.equal(result.checks.filter(x=>!x.pass).length,0);
+ s.metrics.logistics=30.9;
+ assert.equal(endCriteria(s).pass,false);
+ assert.match(endCriteria(s).checks[0].detail,/Logistik/);
+});
+
+test('final-day preview is deterministic, non-mutating and agrees with the real day 18',()=>{
+ const s=createGame(21);
+ s.day=17;s.pending=null;s.over=false;
+ Object.assign(s.metrics,{water:46,river:42,power:47,roads:58,logistics:51,health:53,food:55,fire:50,trust:44});
+ s.fires=8;s.flood=4;
+ const before=JSON.stringify(s);
+ const forecast=finalDayPreview(s);
+ assert.ok(forecast);
+ assert.equal(JSON.stringify(s),before,'forecast never advances the actual game');
+ assert.ok(advance(s));
+ assert.equal(s.day,18);
+ assert.equal(s.outcome,forecast.outcome);
+ assert.deepEqual(s.metrics,forecast.metrics);
+ assert.equal(endCriteria(s).pass,forecast.criteria.pass);
+});
+
+test('quality target is not an instant-failure threshold; survival still requires real reserves',()=>{
+ const s=createGame(4);
+ Object.assign(s.metrics,{water:35,river:10,power:35,roads:15,logistics:35,health:35,food:35,fire:35,trust:35});
+ assert.equal(endCriteria(s).pass,true,'low transport index and roads can be compensated by effective logistics');
+ s.fires=40;
+ assert.equal(endCriteria(s).pass,false,'out-of-control fire prevents survival');
+ s.fires=0;s.flood=38;
+ assert.equal(endCriteria(s).pass,false,'flood threshold remains binding');
 });

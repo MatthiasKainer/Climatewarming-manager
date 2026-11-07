@@ -9,7 +9,6 @@ let cuelume=null, boundRoot=null, loading=null;
 let musicContext=null, musicGain=null, sequenceTimer=null, padStep=0;
 const fadeTime=11.2;
 function store(){try{localStorage.setItem(key,JSON.stringify({effects}));}catch{}}
-export function audioPrefs(){return {effects,music};}
 function oscillatorPress(){
  if(!effects)return;
  try{const Audio=globalThis.AudioContext||globalThis.webkitAudioContext;if(!Audio)return;
@@ -48,52 +47,58 @@ export function toggleEffects(){
  effects=!effects;store();cuelume?.setEnabled?.(effects);
  if(effects)playCue('toggle');return effects;
 }
+// Original generated ambient loop, played through native HTML audio after an explicit click.
+// Keeping music independent from the Cuelume/WebAudio press sounds avoids silent, suspended
+// AudioContexts on Safari, mobile devices and energy-saving tabs.
 const notes=[
- [110.00,164.81,220.0], [110.00,146.83,196.0],
- [98.0,146.83,196.0], [98.0,164.81,220.0],
- [87.31,130.81,174.61], [98.0,146.83,196.0],
- [110.0,146.83,196.0], [110.0,164.81,220.0]
-]; // Original slow, non-melodic modal sequence.
-function pad(){
- if(!music||!musicContext||musicContext.state==='closed')return;
- const when=musicContext.currentTime+.03;
- const tones=notes[padStep++%notes.length];
- for(let i=0;i<tones.length;i++){
-  const osc=musicContext.createOscillator(),env=musicContext.createGain(),filter=musicContext.createBiquadFilter();
-  osc.type=i===0?'sine':'triangle';osc.frequency.setValueAtTime(tones[i]*(i===2?1.002:1),when);
-  filter.type='lowpass';filter.frequency.value=420;
-  env.gain.setValueAtTime(.0001,when);
-  env.gain.linearRampToValueAtTime(i===0?.20:.075,when+2.5);
-  env.gain.setValueAtTime(i===0?.20:.075,when+7);
-  env.gain.exponentialRampToValueAtTime(.0001,when+fadeTime);
-  osc.connect(filter).connect(env).connect(musicGain);
-  osc.start(when);osc.stop(when+fadeTime+.1);
+ [196,246.94,293.66], [220,261.63,329.63],
+ [174.61,220,261.63], [196,246.94,329.63]
+];
+let musicPlayer=null;
+let musicError='';
+function pcmLoop(){
+ const rate=16000, seconds=12, len=rate*seconds;
+ const bytes=new ArrayBuffer(44+len*2),view=new DataView(bytes);
+ const chunk=(offset,value)=>{for(let i=0;i<value.length;i++)view.setUint8(offset+i,value.charCodeAt(i));};
+ chunk(0,'RIFF');view.setUint32(4,36+len*2,true);chunk(8,'WAVE');chunk(12,'fmt ');
+ view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);
+ view.setUint32(24,rate,true);view.setUint32(28,rate*2,true);view.setUint16(32,2,true);
+ view.setUint16(34,16,true);chunk(36,'data');view.setUint32(40,len*2,true);
+ const PI2=Math.PI*2;
+ for(let i=0;i<len;i++){
+  const t=i/rate,section=Math.min(3,Math.floor(t/3)),local=t%3,chord=notes[section];
+  const fade=Math.min(1,t/.16,(seconds-t)/.2);
+  const phrase=Math.min(1,local/.45,(3-local)/.6);
+  const shimmer=.7+.3*Math.sin(PI2*t/.47);
+  const drone=.29*Math.sin(PI2*98*t)+.12*Math.sin(PI2*196*t+.5);
+  const harmony=chord.reduce((sum,hz,j)=>sum+(Math.sin(PI2*hz*t+j*.73)+.16*Math.sin(PI2*2*hz*t+j*.5))*(.21-j*.028),0);
+  const chime=Math.exp(-local*1.25)*(.12*Math.sin(PI2*chord[2]*2*t)+.055*Math.sin(PI2*chord[1]*2*t));
+  const sample=fade*(drone*.55+phrase*shimmer*harmony+chime);
+  view.setInt16(44+i*2,Math.round(Math.max(-1,Math.min(1,sample)) * 25000),true);
  }
+ return new Blob([bytes],{type:'audio/wav'});
 }
-function startMusic(){
- if(musicContext||!music)return;
- const Audio=globalThis.AudioContext||globalThis.webkitAudioContext;
- if(!Audio){music=false;return;}
+function player(){
+ if(musicPlayer)return musicPlayer;
+ musicPlayer=document.getElementById('crisis-ambient')||new Audio();
+ musicPlayer.loop=true;musicPlayer.volume=.45;
+ musicPlayer.src=URL.createObjectURL(pcmLoop());
+ return musicPlayer;
+}
+export function audioPrefs(){return {effects,music,error:musicError};}
+export async function toggleMusic(){
+ if(music){player().pause();music=false;musicError='';return false;}
+ musicError='';
  try{
-  musicContext=new Audio();musicGain=musicContext.createGain();
-  musicGain.gain.setValueAtTime(.025,musicContext.currentTime);musicGain.connect(musicContext.destination);
-  pad();sequenceTimer=setInterval(pad,8000);
- }catch{music=false;musicContext=null;}
-}
-function stopMusic(){
- if(sequenceTimer){clearInterval(sequenceTimer);sequenceTimer=null;}
- if(musicGain&&musicContext){
-  const ctx=musicContext;try{const t=ctx.currentTime;musicGain.gain.cancelScheduledValues(t);musicGain.gain.setTargetAtTime(.0001,t,.3);}catch{}
-  // close after fade; does not affect Cuelume's separate AudioContext
-  setTimeout(()=>{void ctx.close().catch(()=>{});},1200);
+  // play() is initiated synchronously during the button's user gesture.
+  const p=player();const playing=p.play();
+  if(playing&&typeof playing.then==='function')await playing;
+  if(p.paused)throw new Error('Audio playback did not start');
+  music=true;return true;
+ }catch(error){
+  music=false;musicError='Musik konnte nicht gestartet werden';
+  try{musicPlayer?.pause();}catch{}
+  return false;
  }
- musicContext=null;musicGain=null;
 }
-export function toggleMusic(){music=!music;if(music)startMusic();else stopMusic();return music;}
-if(typeof document!=='undefined'){
- document.addEventListener('visibilitychange',()=>{
-  if(!musicContext)return;
-  if(document.hidden)void musicContext.suspend().catch(()=>{});
-  else void musicContext.resume().catch(()=>{});
- });
-}
+if(typeof window!=='undefined')window.addEventListener('pagehide',()=>{musicPlayer?.pause();});

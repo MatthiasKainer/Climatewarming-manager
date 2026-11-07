@@ -212,19 +212,31 @@ function pressure(s,didAct){
  s.upkeep=s.upkeep.filter(item=>--item.days>0);
  if(finances.net>=2.5&&!didAct)log(s,'Reserven geschont',`Keine neue Ausgabe. Krisenfonds ${finances.net>=0?'+':''}${finances.net.toFixed(1).replace('.',',')} Mrd. €, Spielraum f\u00fcr kommende Notlagen.`,'finance');
 }
+// Survival thresholds are deliberately separate from quality scoring. A 45 % average
+// cannot suddenly turn a crisis into a collapse while all sectors remain functional.
+export function endCriteria(s){
+ const vals=METRICS.map(m=>({id:m.id,label:m.label,value:s.metrics[m.id]}));
+ const criticalIds=['water','power','health','food','fire','trust','logistics'];
+ const weak=vals.filter(x=>criticalIds.includes(x.id)&&x.value<31);
+ const avg=round(vals.reduce((sum,x)=>sum+x.value,0)/vals.length);
+ const checks=[
+  {id:'sectors',label:'Sieben Kernbereiche ≥ 31 %',pass:weak.length===0,detail:weak.length?weak.map(x=>`${x.label} ${round(x.value)} %`).join(' · '):'Kernversorgung und Logistik tragfähig'},
+  {id:'fires',label:'Brandfront unter 40',pass:s.fires<40,detail:`${round(s.fires)} / 100`},
+  {id:'flood',label:'Überflutung unter 38',pass:s.flood<38,detail:`${round(s.flood)} / 100`},
+ ];
+ return {checks,pass:checks.every(x=>x.pass),avg,qualityTarget:47.5,qualityReached:avg>=47.5,weak};
+}
 function assess(s){
  const m=s.metrics;
  const severe=['water','power','health','food','fire','trust'].filter(k=>m[k]<14);
  const collapsing=Object.values(m).filter(x=>x<24).length;
  s.criticalDays=collapsing>=3?s.criticalDays+1:0;
- if(severe.length||s.criticalDays>=2||s.fires>=88){s.over=true;s.outcome='loss';s.endedReason=severe.length?`Systemversagen: ${METRICS.find(x=>x.id===severe[0]).label}`:s.fires>=88?'Gro\u00dfbr\u00e4nde au\u00dfer Kontrolle':'Drei kritische Systeme \u00fcber mehrere Tage';}
+ if(severe.length||s.criticalDays>=2||s.fires>=88){s.over=true;s.outcome='loss';s.endedReason=severe.length?`Systemversagen: ${METRICS.find(x=>x.id===severe[0]).label} unter 14 %`:s.fires>=88?'Großbrände außer Kontrolle (Brandfront ≥ 88)':'Drei Systeme über zwei Tage unter 24 %';}
  else if(s.day>=DAYS){
   s.over=true;
-  const avg=Object.values(m).reduce((a,b)=>a+b,0)/METRICS.length;
-  const vital=Math.min(m.water,m.power,m.health,m.food,m.fire,m.trust);
-  const stabilized=avg>=47.5&&vital>=31&&m.logistics>=31&&s.fires<40&&s.flood<38;
-  s.outcome=stabilized?'win':'loss';
-  s.endedReason=stabilized?'Die Hitzephase ist \u00fcberstanden. Versorgung und Einsatzf\u00e4higkeit sind noch tragf\u00e4hig.':'Die Hitze endet, aber mindestens ein kritisches System bleibt instabil.';
+  const result=endCriteria(s);
+  s.outcome=result.pass?'win':'loss';
+  s.endedReason=result.pass?(result.qualityReached?'Die Versorgung ist stabilisiert und das Qualitätsziel erreicht.':'Die Krisenlage bleibt angespannt, aber alle Mindestziele sind erreicht.'): `Mindestziele verfehlt: ${result.checks.filter(x=>!x.pass).map(x=>x.detail).join(' · ')}.`;
  }
 }
 export function advance(s){
@@ -237,6 +249,14 @@ export function advance(s){
  else if(s.fires>=26){log(s,'Brandfronten wachsen',`Aktive Br\u00e4nde ${Math.round(s.fires)}/100. Wasser und Einsatzkr\u00e4fte reichen nicht mehr \u00fcberall.`,'warning');}
  else if(s.temp>=42){log(s,'Hitzewarnung',`Tagesmaximum ${s.temp.toFixed(1)} \u00b0C. Wasser, Netz und Kliniken unter Druck.`,'weather');}
  assess(s);record(s);return true;
+}
+// A precise final-day preview uses the same deterministic simulation on a copy;
+// only used for the transition from day 17 to 18, after all actions this day.
+export function finalDayPreview(s){
+ if(s.day!==DAYS-1||s.over||s.pending)return null;
+ const sample=structuredClone(s);
+ if(!advance(sample))return null;
+ return {outcome:sample.outcome,criteria:endCriteria(sample),avg:round(endCriteria(sample).avg),metrics:sample.metrics};
 }
 export function grade(s){
  const vals=Object.values(s.metrics),avg=vals.reduce((a,b)=>a+b,0)/vals.length;
@@ -258,7 +278,7 @@ export function routeCondition(s,id){
 
 // Deterministic early-warning model: no fictitious forecast probability.
 export function outlook(s){
- const criticalIds=['water','power','health','food','fire','trust'];
+ const criticalIds=['water','power','health','food','fire','trust','logistics'];
  const minimum=criticalIds.map(k=>({id:k,value:s.metrics[k]})).sort((a,b)=>a.value-b.value);
  const weakest=minimum[0];
  const low24=Object.entries(s.metrics).filter(([,v])=>v<24).map(([id])=>id);
@@ -269,9 +289,11 @@ export function outlook(s){
  if(avg<68 || bottleneck.value<48 || weakest.value<42 || s.fires>25 || s.flood>25){level=1;label='ANGESPANNT';hint='Reservespielraum sinkt; besonders schwache Systeme priorisieren.';}
  if(avg<51 || bottleneck.value<33 || weakest.value<30 || low24.length>=2 || s.fires>42 || s.flood>45){level=2;label='ERNST';hint='Mehrere Reserven drohen vor Ende der Krise zu knapp zu werden.';}
  if(avg<43 || weakest.value<24 || low24.length>=3 || s.fires>68 || s.criticalDays>0){level=3;label='AKUTE KRISE';hint='Unmittelbare Ausfallgefahr. Bei drei Systemen unter 24 % droht nach zwei Tagen der Kollaps.';}
- if(level===3 && weakest.value>=24 && low24.length<3)hint='Die aktuelle Durchschnittsreserve liegt unter dem Zielwert für Tag 18. Gegensteuern oder Verlieren.';
+ if(level===3 && weakest.value>=24 && low24.length<3)hint='Mehrere Reserven sind schwach. Am Ende müssen sieben Kernbereiche mindestens 31 % halten.';
  if(s.over&&s.outcome==='loss'){level=4;label='SYSTEMAUSFALL';hint=s.endedReason;}
- const onCourse=avg>=47.5 && minimum[0].value>=31 && s.metrics.logistics>=31 && s.fires<40 && s.flood<38;
+ if(s.over&&s.outcome==='win'){level=1;label='STABILISIERT';hint=s.endedReason;}
+ const finish=endCriteria(s);
+ const onCourse=finish.pass;
  const nearest=METRICS.find(m=>m.id===weakest.id);
  const gap=Math.max(0,round(weakest.value-14));
  return {level,label,hint,weakest:nearest?.label||weakest.id,weakestValue:weakest.value,margin:gap,bottleneck:bottleneck.label,bottleneckValue:bottleneck.value,

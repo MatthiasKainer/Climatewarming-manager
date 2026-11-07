@@ -25,12 +25,14 @@ Die Oberfläche ist für 1280–1440 px breite Desktops als ein einzelner Leitst
 
 Jede neue Krise startet aus **einem von fünf Anfangsprofilen** (Hitze, Niedrigwasser, Waldbrand, Versorgungsengpass, wechselhaftes Wetter) mit geringfügiger deterministischer Variation von neun Ressourcen. Die Lageereignisse wechseln innerhalb von Phasen ihre Reihenfolge. „Dieselbe Krise erneut“ reproduziert hingegen denselben Seed.
 
-Die Farbwarnung **STABIL → ANGESPANNT → ERNST → AKUTE KRISE** berücksichtigt Versorgungspuffer, Brände, Überflutung und laufende Trends. Wenn die aktuelle Lage unter dem Endziel liegt, steht explizit **ZIELWERT VERFEHLT** in der Karte: Durchschnitt mindestens 47,5 %, Kernsysteme mindestens 31 %, Logistik mindestens 31 % sowie begrenzte Brand- und Flutlast am Tag 18. Ein Kernsystem unter 14 % oder länger kollabierende Systeme können vorher zur Niederlage führen. Auf der Karte verdunkeln sich Länder, Routen wechseln entsprechend ihrem modellierten Zustand zu Orange/Rot und gefährdete Versorgungsstandorte pulsieren. Das ist **kein probabilistisches Wettermodell**, sondern eine direkte Anzeige der Spielregeln und des momentanen Zustands.
+Die Farbwarnung **STABIL → ANGESPANNT → ERNST → AKUTE KRISE** berücksichtigt Versorgungspuffer, Brände, Überflutung und akute Ausfallgefahr. **Gewonnen wird an Tag 18**, wenn die sieben Kernbereiche Trinkwasser, Strom, Gesundheit, Lebensmittel, Feuerwehr/KatS, Gesellschaft und Logistik jeweils mindestens **31 %** halten, Brandfront < 40 und Überflutung < 38 sind. Rhein und Autobahnen wirken über die Versorgungsketten, sind aber nicht allein ausschlaggebend. **47,5 % Durchschnitt ist ein Qualitätsziel und keine heimliche zusätzliche Verlustbedingung.** Kernwerte unter 14 %, zwei Tage mit drei extrem schwachen Systemen oder unkontrollierte Großbrände können vorher die Krise beenden.
+
+Vor dem letzten Tag zeigt der Maßnahmenbereich eine **deterministische Vorschau auf Tag 18**. Der **Endbericht bleibt direkt über den Maßnahmen**, sodass Deutschlandkarte und die neun Ressourcenzustände sichtbar bleiben. Er enthält die drei Zielprüfungen, alle Endwerte und die Differenz zum Vortag. Die Karte kennt weiterhin Rot/Orange-Warnstufen, statt erst am Ende einen verdeckten Schwellenwert offenzulegen.
 
 ### Audio
 
 - **Cuelume** v0.2.2 (MIT) wird im Browser bei Bedarf von `cdn.jsdelivr.net` geladen und liefert `press`/`release` und kontextuelle Rückmeldungen. Die Delegation erfolgt innerhalb von `pfusch`-Shadow-DOM. Falls das CDN nicht erreichbar ist, liefert Web Audio einen leisen Ersatzklick statt die UI zu blockieren.
-- Die **optional zuschaltbare Hintergrundmusik** ist ein eigens programmiertes, ruhiges Web-Audio-Ambientmotiv. Es verwendet **keine externe Musikaufnahme** und keine fremden Melodien; kein Lizenz- oder Royalty-Risiko für ein Audioasset. Musik ist bei jedem Seitenaufruf zunächst **aus**. Soundeffekte können jederzeit über `TON AN/AUS` abgeschaltet werden; die Präferenz wird lokal gespeichert.
+- Die **optional zuschaltbare Hintergrundmusik** ist ein eigens komponiertes, im Browser generiertes 12-Sekunden-Ambientmotiv. Es wird **per nativem HTML-Audio** nach einem echten Klick abgespielt, statt in einem möglicherweise gesperrten Web-Audio-Kontext zu verharren. Es verwendet **keine externe Musikaufnahme** und keine fremden Melodien; kein Lizenz- oder Royalty-Risiko für ein Audioasset. Musik ist bei jedem Seitenaufruf zunächst **aus**. Soundeffekte können jederzeit über `TON AN/AUS` abgeschaltet werden; die Präferenz wird lokal gespeichert.
 - Keine automatischen Töne vor Benutzerinteraktion, kein Tracking.
 
 ### Modellierte Engpässe
@@ -44,12 +46,12 @@ Trinkwasser · Rhein/Transportwasser · Energie · Autobahnen · Logistik · Ges
 ```bash
 npm test
 node tests/balance.mjs
-python3 tests/browser-v4.py  # optional, benötigt Python Playwright und Chromium
+python3 tests/browser-v5.py  # optional, benötigt Python Playwright und Chromium
 ```
 
-13 automatisierte Tests prüfen Budget, Abhängigkeiten, Feuerwehr, Rheinpegel nach Starkregen, wechselnde Anfangsbedingungen, Verlustwarnung, Korridore und 150 wiederholbare Simulationsläufe pro Strategie. Nach der V4-Anpassung: 150 Seeds je Strategie — **abwägend 92 Siege / 150**, Daueraktionismus **0 / 150**, völlige Untätigkeit **0 / 150**. Die abwägende Strategie setzt etwa **9 Maßnahmen** ein und lässt etwa **10 Tage** ganz ohne Aktion verstreichen. Dies ist eine Bot-Balance, **keine** validierte menschliche Schwierigkeitsmessung.
+16 automatisierte Tests prüfen Budget, Abhängigkeiten, Feuerwehr, Rheinpegel nach Starkregen, wechselnde Anfangsbedingungen, Verlustwarnung, Korridore und 150 wiederholbare Simulationsläufe pro Strategie. Mit der V5-Abschlussregel: 150 Seeds je Strategie — **abwägend 98 Siege / 150**, Daueraktionismus **0 / 150**, völlige Untätigkeit **0 / 150**. Die abwägende Strategie setzt etwa **9 Maßnahmen** ein und lässt etwa **10 Tage** ganz ohne Aktion verstreichen. Dies ist eine Bot-Balance, **keine** validierte menschliche Schwierigkeitsmessung.
 
-Chromium prüft die Kartenmarker, Krisen-Overlay mit freier Statusansicht, deaktivierte Maßnahmen, Audio-Toggles, Verlustwarnungen, mehrere vollständige Partien sowie 1280–1440 px Viewports und mobile Breite. Der Browser-Smoke-Test verwendet zur Offline-Sichtprüfung einen kompatiblen Renderer; der produktive `pfusch`-Import wird über die GitHub-Pages-URL eingebunden.
+Chromium prüft die Kartenmarker, Ereignis-Overlay, den nichtmodalen Abschlussbericht, Ressourcentrends, echte HTML-Audio-Wiedergabe über einen Klick, Vollpartien sowie 1280–1440 px Viewports und mobile Breite. Der Browser-Smoke-Test verwendet zur Offline-Sichtprüfung einen kompatiblen Renderer; der produktive `pfusch`-Import wird über die GitHub-Pages-URL eingebunden.
 
 ## Lokal starten
 
