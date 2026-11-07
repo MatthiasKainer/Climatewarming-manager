@@ -14,8 +14,8 @@ function eventDecision(s,mode){
  if(s.budget>=a.cost+(mode==='prudent'?8:0) && gain(a)>gain(b)+(mode==='aggressive'?-7:3))return 0;
  return 1;
 }
-export function run(seed,mode){
- const s=createGame(seed);let guards=0;
+export function run(seed,mode,difficulty='standard'){
+ const s=createGame(seed,difficulty);let guards=0;
  let totalSkipped=0;
  while(!s.over){ if(++guards>32)throw Error('stuck '+JSON.stringify({seed,mode,day:s.day}));
   if(s.pending)chooseEvent(s,eventDecision(s,mode));

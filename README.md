@@ -4,9 +4,22 @@ Ein schnelles, grafisch kompaktes Krisenmanagement-Spiel mit **18 Tagen**, zwei 
 
 **[Das Spiel öffnen](https://matthiaskainer.github.io/Climatewarming-manager/)**
 
+## Schwierigkeitsgrad
+
+Vier Stufen sind in der **Topbar** auswählbar. Ein Wechsel gilt **erst ab „Neustart“ / „Neue Krise“**, damit keine laufende Partie heimlich verändert wird. „Nochmal“ wiederholt denselben Seed in der gewählten Stufe. Die Auswahl wird lokal gespeichert; `Standard` ist die bisherige V5-Spielbalance.
+
+| Stufe | Startbudget | Einnahmen / Tag | Krisendruck |
+| --- | ---: | ---: | --- |
+| Leicht | 30 Mrd. € | 6,5 Mrd. € | Mehr Startreserven; Hitze, Schäden und Brände milder |
+| Standard | 24 Mrd. € | 5 Mrd. € | Bisherige Balance |
+| Schwer | 21 Mrd. € | 4,7 Mrd. € | Weniger Startreserven; höhere Verschleiß- und Ereignisschäden |
+| Extrem | 20 Mrd. € | 4,5 Mrd. € | Noch stärkere Kettenreaktionen und langsamere Entwässerung |
+
+Alle vier Stufen haben **identische Überlebensbedingungen**. Die Schwierigkeit verändert Budget, Einnahmen, Ausgangsreserven, Hitze, täglichen Verschleiß, Katastrophenintensität und Brandentwicklung, nicht die Ziellinie. Derselbe Seed erzeugt denselben Ereignisplan auf allen Stufen.
+
 ## Ein Spieltag
 
-- Der Bund beginnt mit **24 Mrd. € verfügbarem Krisenbudget**. Pro Folgetag fließen **5 Mrd. €** zu; laufender Unterhalt und Kreditlast werden abgezogen. Die Euro-Größenordnungen sind **abstrahierte Planspielgrößen**, ausdrücklich keine reale Kosten- oder Haushaltsschätzung.
+- Auf `Standard` beginnt der Bund mit **24 Mrd. € verfügbarem Krisenbudget**. Pro Folgetag fließen **5 Mrd. €** zu; laufender Unterhalt und Kreditlast werden abgezogen. Die Euro-Größenordnungen sind **abstrahierte Planspielgrößen**, ausdrücklich keine reale Kosten- oder Haushaltsschätzung.
 - Maximal **zwei Beschlüsse pro Tag**. Nichtstun kostet keinen Beschluss und lässt Mittel für spätere Katastrophen übrig.
 - Feuerwehren löschen Brände nur mit Wasser und Einsatzkräften; Personal erholt sich langsam. Konvois und Katastrophenschutz konkurrieren um Diesel, Strom, Logistik und Fahrzeuge.
 - Bei Hitze entstehen Straßenschäden (Blow-ups). Der Rhein wird schwer befahrbar. Stromnetze, Gesundheitssystem, Lebensmittel und Vertrauen beeinflussen sich gegenseitig.
@@ -46,10 +59,10 @@ Trinkwasser · Rhein/Transportwasser · Energie · Autobahnen · Logistik · Ges
 ```bash
 npm test
 node tests/balance.mjs
-python3 tests/browser-v5.py  # optional, benötigt Python Playwright und Chromium
+python3 tests/browser-v6.py  # Schwierigkeitswahl, Neustarts, Viewports; Python Playwright und Chromium
 ```
 
-16 automatisierte Tests prüfen Budget, Abhängigkeiten, Feuerwehr, Rheinpegel nach Starkregen, wechselnde Anfangsbedingungen, Verlustwarnung, Korridore und 150 wiederholbare Simulationsläufe pro Strategie. Mit der V5-Abschlussregel: 150 Seeds je Strategie — **abwägend 98 Siege / 150**, Daueraktionismus **0 / 150**, völlige Untätigkeit **0 / 150**. Die abwägende Strategie setzt etwa **9 Maßnahmen** ein und lässt etwa **10 Tage** ganz ohne Aktion verstreichen. Dies ist eine Bot-Balance, **keine** validierte menschliche Schwierigkeitsmessung.
+19 automatisierte Tests prüfen Budget, Abhängigkeiten, Feuerwehr, Rheinpegel nach Starkregen, wechselnde Anfangsbedingungen, Verlustwarnung, Korridore und 150 wiederholbare Simulationsläufe pro Strategie. Mit der V5-Abschlussregel auf Standard: 150 Seeds je Strategie — **abwägend 98 Siege / 150**, Daueraktionismus **0 / 150**, völlige Untätigkeit **0 / 150**. Auf 220 Seeds mit derselben automatisierten Strategie gewinnt „Leicht“ 220-mal, „Standard“ 146-mal, „Schwer“ 32-mal und „Extrem“ 7-mal. Die Simulationen sind keine repräsentativen menschlichen Schwierigkeitsmessungen. Die abwägende Strategie setzt etwa **9 Maßnahmen** ein und lässt etwa **10 Tage** ganz ohne Aktion verstreichen. Dies ist eine Bot-Balance, **keine** validierte menschliche Schwierigkeitsmessung.
 
 Chromium prüft die Kartenmarker, Ereignis-Overlay, den nichtmodalen Abschlussbericht, Ressourcentrends, echte HTML-Audio-Wiedergabe über einen Klick, Vollpartien sowie 1280–1440 px Viewports und mobile Breite. Der Browser-Smoke-Test verwendet zur Offline-Sichtprüfung einen kompatiblen Renderer; der produktive `pfusch`-Import wird über die GitHub-Pages-URL eingebunden.
 

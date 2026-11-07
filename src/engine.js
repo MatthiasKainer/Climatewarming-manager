@@ -3,6 +3,15 @@ export const DAYS = 18;
 export const MAX_ACTIONS = 2;
 export const START_BUDGET = 24;
 export const DAILY_INCOME = 5;
+// Identical victory thresholds across modes: difficulty changes the pressure,
+// not the definition of survival. "standard" reproduces the previous model.
+export const DIFFICULTIES = Object.freeze([
+ {id:'leicht',name:'Leicht',description:'Mehr Reserven, sanftere Krisen und höhere Einnahmen.',budget:30,income:6.5,initial:5,heat:-0.6,attrition:0.87,event:0.87,spread:0.87,floodRecovery:1.12},
+ {id:'standard',name:'Standard',description:'Die bisherige Balance mit begrenztem Haushalt.',budget:24,income:5,initial:0,heat:0,attrition:1,event:1,spread:1,floodRecovery:1},
+ {id:'schwer',name:'Schwer',description:'Weniger Geld, stärkere Schäden, schnellere Eskalation.',budget:21,income:4.7,initial:-2,heat:0.35,attrition:1.08,event:1.07,spread:1.12,floodRecovery:0.95},
+ {id:'extrem',name:'Extrem',description:'Knappste Reserven und harte Kettenreaktionen.',budget:20,income:4.5,initial:-3,heat:0.6,attrition:1.13,event:1.10,spread:1.18,floodRecovery:0.91},
+]);
+export const difficultyConfig = id => DIFFICULTIES.find(d=>d.id===id)||DIFFICULTIES[1];
 export const METRICS = [
   { id:'water', label:'Trinkwasser', unit:'Versorgungssicherheit', icon:'\u25c8', detail:'Aufbereitung, Netze und Trinkwasserreserven. Auch die Feuerwehr braucht Wasser.' },
   { id:'river', label:'Rhein / Transportwasser', unit:'Schiffbarkeitsindex', icon:'\u224b', detail:'Niedrigwasser erschwert Schiffstransport und Kraftwerksk\u00fchlung.' },
@@ -99,7 +108,7 @@ export const EVENTS = {
 const clamp=(x,a=0,b=100)=>Math.max(a,Math.min(b,x));
 const round=x=>Math.round(x*10)/10;
 function rand(s) { let x=s.rng>>>0; x^=x<<13;x^=x>>>17;x^=x<<5;s.rng=x>>>0;return s.rng/4294967296; }
-function temperature(s) {return round(38.5 + 2.8*Math.sin((s.day+1)*.76)+2.5*rand(s));}
+function temperature(s) {return round(38.5 + 2.8*Math.sin((s.day+1)*.76)+2.5*rand(s)+difficultyConfig(s.difficulty).heat);}
 function log(s,title,body,kind='info') {s.log.unshift({day:s.day,title,body,kind});s.log.length=Math.min(36,s.log.length);}
 function record(s) {s.history.push({day:s.day,heat:s.temp,budget:round(s.budget),fires:round(s.fires),fireRisk:round(s.fireRisk),flood:round(s.flood),...s.metrics});}
 function syncToday(s) {const last=s.history.at(-1); if(last?.day===s.day) Object.assign(last,{budget:round(s.budget),fires:round(s.fires),fireRisk:round(s.fireRisk),flood:round(s.flood),...s.metrics});}
@@ -115,8 +124,9 @@ function eventTimeline(s){
  }
  return schedule;
 }
-export function createGame(seed=20261107){
- const s={seed,rng:(seed>>>0)||1,day:1,temp:40,budget:START_BUDGET,debt:0,ops:MAX_ACTIONS,actionsToday:0,
+export function createGame(seed=20261107,difficulty='standard'){
+ const cfg=difficultyConfig(difficulty);
+ const s={seed,difficulty:cfg.id,rng:(seed>>>0)||1,day:1,temp:40,budget:cfg.budget,debt:0,ops:MAX_ACTIONS,actionsToday:0,
  metrics:{...INITIAL},fires:0,fireRisk:44,flood:0,storm:0,stormZone:'',riverPulseDays:0,
  routeIncidents:{},policy:{},upkeep:[],lastUsed:{},used:{},log:[],history:[],pending:null,timeline:{},
  over:false,outcome:null,criticalDays:0,endedReason:'',actionCount:0,shortfallDays:0};
@@ -124,33 +134,34 @@ export function createGame(seed=20261107){
  s.scenario=scenario.id;s.scenarioName=scenario.name;
  for(const k of Object.keys(s.metrics)){
    const variation=Math.floor(rand(s)*5)-2;
-   s.metrics[k]=clamp(INITIAL[k]+(scenario.metrics[k]||0)+variation);
+   s.metrics[k]=clamp(INITIAL[k]+cfg.initial+(scenario.metrics[k]||0)+variation);
  }
- s.fireRisk=clamp(s.fireRisk+(scenario.fireRisk||0)+Math.floor(rand(s)*7)-3);
+ s.fireRisk=clamp(s.fireRisk-cfg.initial*.65+(scenario.fireRisk||0)+Math.floor(rand(s)*7)-3);
  s.fires=scenario.fires||0;s.flood=scenario.flood||0;
  s.timeline=eventTimeline(s);
  s.temp=temperature(s);
- log(s,scenario.name,`${scenario.intro} 24 Mrd. € frei, je neuem Tag 5 Mrd. € Zufluss. Ressourcen und Ereignisfolge variieren je Krise.`);
+ log(s,scenario.name,`${scenario.intro} Schwierigkeit: ${cfg.name}. Start ${cfg.budget} Mrd. €, täglich ${cfg.income.toLocaleString('de-DE')} Mrd. € Zufluss. Ressourcen und Ereignisfolge variieren je Krise.`);
  record(s);return s;
 }
 export function finance(s){
  const upkeep=round(s.upkeep.reduce((sum,item)=>sum+item.amount,0));
  const debtService=s.debt?1.5:0;
- return {income:DAILY_INCOME,upkeep,debtService,net:round(DAILY_INCOME-upkeep-debtService)};
+ const income=difficultyConfig(s.difficulty).income;
+ return {income,upkeep,debtService,net:round(income-upkeep-debtService)};
 }
 export function applyEffects(s,effects={}){for(const [k,v] of Object.entries(effects))if(k in s.metrics)s.metrics[k]=round(clamp(s.metrics[k]+v));}
-function special(s,x){
+function special(s,x,severity=1){
  if(x.policy) s.policy[x.policy[0]]=Math.max(s.policy[x.policy[0]]||0,x.policy[1]);
- if(x.fireRisk) s.fireRisk=round(clamp(s.fireRisk+x.fireRisk));
- if(x.fires) s.fires=round(clamp(s.fires+x.fires));
+ if(x.fireRisk) s.fireRisk=round(clamp(s.fireRisk+(x.fireRisk>0?round(x.fireRisk*severity):x.fireRisk)));
+ if(x.fires) s.fires=round(clamp(s.fires+(x.fires>0?round(x.fires*severity):x.fires)));
  if(x.riverPulse){s.metrics.river=round(clamp(s.metrics.river+x.riverPulse));s.riverPulseDays=3;log(s,'Rheinpegel kurzfristig gestiegen',`Mehr Abfluss verbessert die Schiffbarkeit um ${x.riverPulse} Indexpunkte. Das Wasser ist nicht automatisch Trinkwasser; der Effekt klingt rasch ab.`,'weather');}
  if(x.flood){
-  s.flood=round(clamp(s.flood+x.flood));
+  s.flood=round(clamp(s.flood+(x.flood>0?round(x.flood*severity):x.flood)));
   // Heavy rainfall can lower wildfire risk, even as run-off floods roads and basements.
   if(x.flood>0){s.fireRisk=round(clamp(s.fireRisk-x.flood*.44));s.fires=round(clamp(s.fires-x.flood*.12));}
  }
  if(x.storm) {s.storm=round(clamp(x.storm));s.stormZone=x.stormZone||s.stormZone;}
- if(x.routes) for(const r of x.routes) s.routeIncidents[r.id]={penalty:r.penalty,days:r.days,reason:x.title||'Verkehrsstörung'};
+ if(x.routes) for(const r of x.routes) s.routeIncidents[r.id]={penalty:round(r.penalty*severity),days:r.days,reason:x.title||'Verkehrsstörung'};
  if(x.upkeep) s.upkeep.push({id:x.id||'krisenlage',amount:x.upkeep,days:x.upkeepDays||3});
 }
 export function available(s,a){
@@ -181,6 +192,7 @@ export function chooseEvent(s,index){
  log(s,`Lageentscheidung: ${x.name}`,x.text,'decision');s.pending=null;syncToday(s);return true;
 }
 function pressure(s,didAct){
+ const cfg=difficultyConfig(s.difficulty);
  const m=s.metrics,p=s.policy,hot=Math.max(0,s.temp-39),low=(k,t=55)=>Math.max(0,(t-m[k])/25);
  const d={
  water:-1.45-.19*hot-.38*low('power')-.005*s.flood+(p.ration?2.0:0)+(p.leaks?1.35:0),
@@ -193,14 +205,14 @@ function pressure(s,didAct){
  fire:-.55-.17*hot-.14*s.fires-.015*s.flood+(s.fires<6?1.6:0)+(p.mutual?1.75:0),
  trust:-.45-.38*low('water')-.48*low('food')-.25*low('power')-(p.ration?.32:0)-(p.load?.45:0)
  };
- for(const [key,delta]of Object.entries(d))m[key]=round(clamp(m[key]+delta));
+ for(const [key,delta]of Object.entries(d))m[key]=round(clamp(m[key]+(delta<0?delta*cfg.attrition:delta)));
  if(s.riverPulseDays>0){s.metrics.river=round(clamp(s.metrics.river-2.3));s.riverPulseDays--;}
  const rain=rand(s)<.11;
- s.fireRisk=round(clamp(s.fireRisk+1.55+.27*hot+.38*low('river',55)-(p.firewatch?2.4:0)-(rain?11:0)));
+ s.fireRisk=round(clamp(s.fireRisk+(1.55+.27*hot+.38*low('river',55))*cfg.attrition-(p.firewatch?2.4:0)-(rain?11:0)));
  const ignition=Math.max(0,(s.fireRisk-46)/8.2)+Math.max(0,(52-m.fire)/12)+rand(s)*1.2;
  const suppression=1.4+m.fire/28+(p.fireline?3.2:0)+(p.mutual?1:0);
- s.fires=round(clamp(s.fires+ignition-suppression));
- s.flood=round(clamp(s.flood-(s.storm?6:9)));
+ s.fires=round(clamp(s.fires+ignition*cfg.spread-suppression));
+ s.flood=round(clamp(s.flood-(s.storm?6:9)*cfg.floodRecovery));
  s.storm=round(clamp(s.storm-32));
  for(const key of Object.keys(s.routeIncidents)) {if(--s.routeIncidents[key].days<=0)delete s.routeIncidents[key];}
  if(s.fires>12){m.roads=round(clamp(m.roads-.06*s.fires));m.health=round(clamp(m.health-.035*s.fires));}
@@ -244,7 +256,10 @@ export function advance(s){
  const didAct=s.actionsToday>0;
  s.day++;s.ops=MAX_ACTIONS;s.temp=temperature(s);
  pressure(s,didAct);s.actionsToday=0;const e=s.timeline[s.day];
- if(e){applyEffects(s,e.impact);special(s,e);s.pending=e;log(s,e.title,e.text,'event');}
+ if(e){
+  const intensity=difficultyConfig(s.difficulty).event;
+  const impact=Object.fromEntries(Object.entries(e.impact||{}).map(([k,v])=>[k,v<0?round(v*intensity):v]));
+  applyEffects(s,impact);special(s,e,intensity);s.pending=e;log(s,e.title,e.text,'event');}
  else if(s.flood>=20){log(s,'Hochwasser-Einsätze dauern an',`Überflutung ${Math.round(s.flood)}/100. Pumpen und Feuerwehren bleiben gebunden.`,'warning');}
  else if(s.fires>=26){log(s,'Brandfronten wachsen',`Aktive Br\u00e4nde ${Math.round(s.fires)}/100. Wasser und Einsatzkr\u00e4fte reichen nicht mehr \u00fcberall.`,'warning');}
  else if(s.temp>=42){log(s,'Hitzewarnung',`Tagesmaximum ${s.temp.toFixed(1)} \u00b0C. Wasser, Netz und Kliniken unter Druck.`,'weather');}

@@ -1,9 +1,12 @@
 import { pfusch, html, script } from 'https://matthiaskainer.github.io/pfusch/pfusch.min.js';
-import { DAYS, MAX_ACTIONS, METRICS, ACTIONS, createGame, finance, available, takeAction, chooseEvent, advance, grade, routeCondition, outlook, endCriteria, finalDayPreview } from './engine.js';
+import { DAYS, MAX_ACTIONS, METRICS, ACTIONS, DIFFICULTIES, difficultyConfig, createGame, finance, available, takeAction, chooseEvent, advance, grade, routeCondition, outlook, endCriteria, finalDayPreview } from './engine.js';
 import { STATES, CITIES, CITY_BY_NAME, ROUTES, NODES, ROUTE_INCIDENT_CENTERS } from './geography.js';
 import { attachSounds, playCue, audioPrefs, toggleEffects, toggleMusic } from './audio.js';
 
-let game=createGame();
+const prefKey='duerrekrise.difficulty.v1';
+function startingDifficulty(){try{return difficultyConfig(localStorage.getItem(prefKey)).id;}catch{return 'standard';}}
+const defaultDifficulty=startingDifficulty();
+let game=createGame(20261107,defaultDifficulty);
 const fmt=n=>Number(n).toLocaleString('de-DE',{maximumFractionDigits:1});
 const money=n=>`${fmt(n)} Mrd. €`;
 const unit=n=>`${Math.round(n)} %`;
@@ -105,11 +108,11 @@ function eventPanel(e,refresh){
    html.p(c.text),html.small([...Object.entries(c.effect||{}).map(([k,v])=>`${metric(k).label}: ${arrow(v)}`),...(c.flood?[`Überflutung ${arrow(c.flood)}`]:[]),...(c.fires?[`Brandfront ${arrow(c.fires)}`]:[])].join(' · '))))),
   html.div({class:'event-note'},html.strong(risk.label),html.span('Entscheide nach Netzlage und verfügbaren Mitteln.')));
 }
-function resultPanel(refresh){
+function resultPanel(restart){
  const g=grade(game),ending=endCriteria(game),win=game.outcome==='win';
  const previous=game.history.find(x=>x.day===game.day-1);
  return html.div({class:`end-panel ${win?'end-win':'end-loss'}`,role:'region','aria-label':'Abschlusslage'},
-  html.div({class:'end-eyebrow'},win?'KRISENLAGE ÜBERSTANDEN':'KRISENMANAGEMENT GESCHEITERT',html.span(`TAG ${game.day}/${DAYS}`)),
+  html.div({class:'end-eyebrow'},win?'KRISENLAGE ÜBERSTANDEN':'KRISENMANAGEMENT GESCHEITERT',html.span(`TAG ${game.day}/${DAYS} · ${difficultyConfig(game.difficulty).name.toUpperCase()}`)),
   html.h2(win?'Deutschland hält durch.':'Die Krise überfordert das System.'),
   html.p({class:'end-reason'},game.endedReason),
   html.div({class:'end-score'},html.strong(`${g.score}/100`),html.div(html.span('LEISTUNGSINDEX'),html.b(`Ø ${fmt(ending.avg)} % Versorgung`),html.small(ending.qualityReached?'Qualitätsziel 47,5 % erreicht':'Qualitätsziel 47,5 % nicht erreicht · kein automatisches Scheitern'))),
@@ -123,13 +126,13 @@ function resultPanel(refresh){
   })),
   html.div({class:'end-actions'},
    html.div(html.strong(`Restbudget: ${money(game.budget)}`),html.small(`${game.actionCount} Beschlüsse · ${money(game.debt)} Notkredite`)),
-   html.button({class:'primary','data-cuelume-press':'',click:()=>{game=createGame(game.seed+1);refresh();}},'Neue Krise'),
-   html.button({class:'outline','data-cuelume-press':'',click:()=>{game=createGame(game.seed);refresh();}},'Nochmal')));
+   html.button({class:'primary','data-cuelume-press':'',click:()=>restart(false)},'Neue Krise'),
+   html.button({class:'outline','data-cuelume-press':'',click:()=>restart(true)},'Nochmal')));
 }
 function helpOverlay(state){return html.div({class:'modal-backdrop'},html.div({class:'help-modal',role:'dialog','aria-modal':'true'},
  html.div({class:'eyebrow'},'SO FUNKTIONIERT ES'),html.h2('18 Tage. Begrenzte Eingriffe.'),
  html.p('Klicke auf Korridore und Netzknoten. Wähle höchstens zwei Maßnahmen am Tag; sparen kann die beste Entscheidung sein.'),
- html.p('Startbudget: 24 Mrd. €, täglicher Zufluss: 5 Mrd. € abzüglich laufender Kosten.'),
+ html.p(`Schwierigkeit: ${difficultyConfig(game.difficulty).name}. ${money(difficultyConfig(game.difficulty).budget)} Startbudget; ${money(difficultyConfig(game.difficulty).income)} täglicher Zufluss abzüglich laufender Kosten. Stufe für den nächsten Neustart oben auswählen.`),
  html.p('Tag 18: Sieben Kernbereiche (Wasser, Strom, Gesundheit, Lebensmittel, Feuerwehr, Gesellschaft und Logistik) müssen ≥ 31 % halten; Brandfront < 40 und Überflutung < 38. Rhein, Autobahnen und Durchschnitt beeinflussen die Qualität, aber nicht allein das Überleben.'),
  html.p('Unter 14 % bei einem Kernsystem droht der sofortige Kollaps. Drei Systeme unter 24 % über zwei Tage können ebenfalls zur Niederlage führen.'),
  html.button({class:'primary','data-cuelume-press':'',click:()=>{state.help=false;}},'Zurück zum Krisenstab')));}
@@ -142,8 +145,12 @@ function systemCard(){const risk=outlook(game);return html.div({class:`situation
  html.div(html.span('ÜBERFLUTUNG'),html.strong(`${Math.round(game.flood)}/100`))));}
 function dispatchLog(s){return html.div({class:`alert-row log-${s.kind}`},html.span(`T${s.day}`),html.div(html.strong(s.title),html.small(s.body)));}
 
-pfusch('crisis-game',{version:0,tab:'alle',layer:'alle',inspect:null,help:false},state=>{
+pfusch('crisis-game',{version:0,tab:'alle',layer:'alle',inspect:null,help:false,difficultyChoice:defaultDifficulty},state=>{
  const refresh=()=>{state.version++;};
+ const restart=(repeat=false)=>{
+  game=createGame(repeat?game.seed:game.seed+1,state.difficultyChoice);
+  state.inspect=null;state.tab='alle';state.layer='alle';state.help=false;refresh();
+ };
  const cash=finance(game);
  const selected=currentSelection(state.inspect);
  const risk=outlook(game),audio=audioPrefs(),lastDay=finalDayPreview(game);
@@ -159,12 +166,19 @@ pfusch('crisis-game',{version:0,tab:'alle',layer:'alle',inspect:null,help:false}
      topStat('VERFÜGBARES BUDGET',money(game.budget),forecast(),'budget-stat'),
      topStat('BESCHLÜSSE',`${game.actionsToday} / ${MAX_ACTIONS}`,`${game.ops} verfügbar`),
      topStat('SYSTEMRISIKO',risk.label,risk.level>=2&&!risk.onCourse?`${risk.weakest}: ${fmt(risk.weakestValue)} % · Minimum 31 %`:`${risk.bottleneck}: ${Math.round(risk.bottleneckValue)} %`,`status-stat risk-${risk.level}`)),
-    html.div({class:'top-links'},html.button({class:`text-button sound-switch ${audio.effects?'active':''}`,title:'Cuelume-Press-Töne an/aus','aria-pressed':audio.effects,'data-cuelume-press':'',click:()=>{toggleEffects();refresh();}},audio.effects?'TON AN':'TON AUS'),html.button({class:`text-button sound-switch ${audio.music?'active':''}`,title:audio.error||'Leise Hintergrundmusik an/aus','aria-pressed':audio.music,'data-cuelume-press':'',click:async()=>{await toggleMusic();refresh();}},audio.error?'MUSIK FEHLER':audio.music?'MUSIK AN':'MUSIK AUS'),html.button({class:'text-button',disabled:!!game.pending,click:()=>{state.help=!state.help;}},'REGELN'),html.button({class:'text-button',disabled:!!game.pending,click:()=>{game=createGame(game.seed+1);state.inspect=null;refresh();}},'NEUSTART'))),
+    html.div({class:'top-links'},
+      html.label({class:`difficulty-control ${state.difficultyChoice!==game.difficulty?'queued':''}`,title:'Auswahl gilt ab der nächsten Krise'},
+       html.span('STUFE'),
+       html.select({'aria-label':'Schwierigkeitsgrad für die nächste Krise',value:state.difficultyChoice,
+        change:e=>{const id=difficultyConfig(e.target.value).id;state.difficultyChoice=id;try{localStorage.setItem(prefKey,id);}catch{};},
+        },...DIFFICULTIES.map(d=>html.option({value:d.id,selected:d.id===state.difficultyChoice},d.name))),
+       state.difficultyChoice!==game.difficulty?html.small('BEIM NEUSTART'):null),
+      html.button({class:`text-button sound-switch ${audio.effects?'active':''}`,title:'Cuelume-Press-Töne an/aus','aria-pressed':audio.effects,'data-cuelume-press':'',click:()=>{toggleEffects();refresh();}},audio.effects?'TON AN':'TON AUS'),html.button({class:`text-button sound-switch ${audio.music?'active':''}`,title:audio.error||'Leise Hintergrundmusik an/aus','aria-pressed':audio.music,'data-cuelume-press':'',click:async()=>{await toggleMusic();refresh();}},audio.error?'MUSIK FEHLER':audio.music?'MUSIK AN':'MUSIK AUS'),html.button({class:'text-button',disabled:!!game.pending,click:()=>{state.help=!state.help;}},'REGELN'),html.button({class:'text-button',disabled:!!game.pending,click:()=>restart(false)},'NEUSTART'))),
    html.main({class:'dashboard'},
     html.section({class:`map-panel panel map-urgency-${risk.level}`},
      html.div({class:'panel-head'},html.div(html.span({class:'eyebrow'},'STRATEGISCHES LAGEBILD'),html.h1('Deutschland · Infrastruktur')),html.div({class:'layer-tabs'},...LAYERS.map(([id,label])=>html.button({type:'button',class:`layer-tab ${state.layer===id?'selected':''}`,disabled:!!game.pending,click:()=>{state.layer=id;}},label)))),
      html.div({class:'map-body'},mapView(state),systemCard()),
-     html.div({class:'map-foot'},html.span(`SZENARIO: ${game.scenarioName.toUpperCase()}`),html.span('ZIEL: KERN 7 ≥ 31 % · BRAND < 40 · FLUT < 38'))),
+     html.div({class:'map-foot'},html.span(`SZENARIO: ${game.scenarioName.toUpperCase()} · STUFE: ${difficultyConfig(game.difficulty).name.toUpperCase()}`),html.span('ZIEL: KERN 7 ≥ 31 % · BRAND < 40 · FLUT < 38'))),
     html.section({class:`decision-panel panel ${game.pending?'decision-pending':''} ${game.over?'decision-finished':''}`},
      html.div({class:'panel-head'},html.div(html.span({class:'eyebrow'},'FÜHRUNGSSTAB'),html.h2(game.over?'Abschlusslage':game.pending?'Lageentscheidung':'Maßnahmen')),html.span({class:'decisions-badge'},game.over?'KRISENENDE':game.pending?'SOFORTENTSCHEIDUNG':`${game.actionsToday}/${MAX_ACTIONS} BESCHLOSSEN`)),
      html.div({class:'filters'},...TABS.map(([id,label])=>html.button({type:'button',class:`tab ${state.tab===id?'selected':''}`,disabled:game.over||!!game.pending,click:()=>{state.tab=id;}},label))),
@@ -174,7 +188,7 @@ pfusch('crisis-game',{version:0,tab:'alle',layer:'alle',inspect:null,help:false}
       html.button({type:'button',class:'advance primary',disabled:game.over||!!game.pending,'data-cuelume-press':'','data-cuelume-release':'',click:()=>{if(advance(game)){playCue(game.pending?'error':'page');if(game.pending)state.layer='alle';refresh();}}},`TAG ${Math.min(DAYS,game.day+1)} →`)),
      html.div({class:'alerts'},html.div({class:'alerts-label'},html.span('LETZTE MELDUNGEN'),html.span(`${game.log.length} IM PROTOKOLL`)),...game.log.slice(0,2).map(dispatchLog)),
      game.pending&&!game.over?eventPanel(game.pending,refresh):null,
-     game.over?resultPanel(refresh):null
+     game.over?resultPanel(restart):null
     )),
    html.footer({class:'footer'},html.span('DÜRREKRISE ’26 · EIN FIKTIVES PLANSPIEL'),html.span('Geometrie: isellsoap/deutschlandGeoJSON · Cuelume (MIT) · Originalton · ',html.a({href:'https://github.com/MatthiasKainer/pfusch',target:'_blank',rel:'noopener noreferrer'},'mit pfusch')))
   ),

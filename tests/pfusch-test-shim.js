@@ -16,7 +16,7 @@ export function pfusch(name, state, renderer){
     const isSvg=d.tag==='svg'||ns==='svg';const el=isSvg?document.createElementNS('http://www.w3.org/2000/svg',d.tag):document.createElement(d.tag);
     for(const[k,v]of Object.entries(d.a||{})){
      if(typeof v==='function'){el.addEventListener(k,v)}
-     else if(['disabled','inert','checked'].includes(k)){el[k]=!!v;if(v)el.setAttribute(k,'')}
+     else if(['disabled','inert','checked','selected'].includes(k)){el[k]=!!v;if(v)el.setAttribute(k,'')}
      else if(v!=null){el.setAttribute(k,String(v));}
     }
     for(const x of d.children||[])el.appendChild(conv(x,isSvg?'svg':null));return el;

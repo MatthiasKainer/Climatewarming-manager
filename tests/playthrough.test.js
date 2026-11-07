@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createGame, finance, ACTIONS, EVENTS, START_BUDGET, DAILY_INCOME, MAX_ACTIONS, available, takeAction, advance, chooseEvent, DAYS, grade,routeCondition,SCENARIOS,outlook,endCriteria,finalDayPreview} from '../src/engine.js';
+import {createGame, finance, ACTIONS, EVENTS, START_BUDGET, DAILY_INCOME, DIFFICULTIES, difficultyConfig, MAX_ACTIONS, available, takeAction, advance, chooseEvent, DAYS, grade,routeCondition,SCENARIOS,outlook,endCriteria,finalDayPreview} from '../src/engine.js';
 import {run} from './balance.mjs';
 import {STATES,CITIES,CITY_BY_NAME,ROUTES,NODES} from '../src/geography.js';
 
@@ -237,4 +237,49 @@ test('quality target is not an instant-failure threshold; survival still require
  assert.equal(endCriteria(s).pass,false,'out-of-control fire prevents survival');
  s.fires=0;s.flood=38;
  assert.equal(endCriteria(s).pass,false,'flood threshold remains binding');
+});
+
+test('difficulty selection sets explicit economy, opening pressure and keeps win conditions identical',()=>{
+ assert.deepEqual(DIFFICULTIES.map(d=>d.id),['leicht','standard','schwer','extrem']);
+ const seed=48;
+ const easy=createGame(seed,'leicht'),normal=createGame(seed,'standard');
+ const hard=createGame(seed,'schwer'),extreme=createGame(seed,'extrem');
+ assert.equal(difficultyConfig('unknown').id,'standard');
+ assert.equal(normal.budget,START_BUDGET);
+ assert.equal(normal.difficulty,'standard');
+ assert.equal(normal.difficulty,createGame(seed).difficulty);
+ assert.ok(easy.budget>normal.budget&&normal.budget>hard.budget&&hard.budget>extreme.budget);
+ assert.ok(finance(easy).income>finance(normal).income&&finance(normal).income>finance(hard).income&&finance(hard).income>finance(extreme).income);
+ assert.ok(easy.metrics.water>normal.metrics.water&&normal.metrics.water>hard.metrics.water&&hard.metrics.water>extreme.metrics.water);
+ assert.equal(normal.scenario,hard.scenario);
+ assert.deepEqual(Object.keys(normal.timeline),Object.keys(hard.timeline));
+ assert.deepEqual(Object.values(normal.timeline).map(x=>x.title),Object.values(hard.timeline).map(x=>x.title),'event types and timings remain comparable');
+ for (const s of [easy,normal,hard,extreme]){
+  assert.deepEqual(endCriteria(s).checks.map(x=>x.label),endCriteria(normal).checks.map(x=>x.label));
+  assert.deepEqual(createGame(seed,s.difficulty),s,'same difficulty + seed repeats identical scenario');
+ }
+});
+
+test('higher difficulty incurs more attrition and stronger event damage on same timeline',()=>{
+ const modes=['leicht','standard','schwer','extrem'].map(d=>createGame(76,d));
+ // Normalize metrics and temperature to isolate pressure multipliers.
+ for(const s of modes){for(const k of Object.keys(s.metrics))s.metrics[k]=75;s.temp=40;}
+ for(const s of modes)assert.ok(advance(s));
+ const waters=modes.map(x=>x.metrics.water);
+ assert.ok(waters.every((x,i)=>i===0||x<=waters[i-1]),JSON.stringify(waters));
+ const r=modes.map(x=>x.fireRisk);
+ assert.ok(r.every((x,i)=>i===0||x>=r[i-1]),JSON.stringify(r));
+});
+
+test('difficulty win frequencies are ordered, difficult modes still beatable, action spam fails',()=>{
+ const modes=['leicht','standard','schwer','extrem'];
+ const totals=modes.map(d=>Array.from({length:220},(_,i)=>run(i+1,'balanced',d)).filter(x=>x.win).length);
+ assert.ok(totals[0]>=totals[1]&&totals[1]>totals[2]&&totals[2]>totals[3],JSON.stringify(totals));
+ assert.ok(totals[2]>=8 && totals[3]>=1, 'hard and extreme should not be mathematically unwinnable');
+ assert.ok(totals[1]>=90 && totals[1]<=190, 'standard remains the established challenge');
+ for(const id of modes){
+  const aggressive=Array.from({length:80},(_,i)=>run(i+1,'aggressive',id)).filter(x=>x.win).length;
+  const balanced=Array.from({length:80},(_,i)=>run(i+1,'balanced',id)).filter(x=>x.win).length;
+  assert.ok(aggressive<balanced,`${id}: action spam should be worse`);
+ }
 });
