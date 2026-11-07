@@ -152,54 +152,107 @@ function systemCard(){const risk=outlook(game);return html.div({class:`situation
  html.div({class:'risk-summary'},
  html.div(html.span('BRANDFRONT'),html.strong(`${Math.round(game.fires)}/100`)),
  html.div(html.span('ÜBERFLUTUNG'),html.strong(`${Math.round(game.flood)}/100`))));}
-function dispatchLog(s){return html.div({class:`alert-row log-${s.kind}`},html.span(`T${s.day}`),html.div(html.strong(s.title),html.small(s.body)));}
 
-pfusch('crisis-game',{version:0,tab:'alle',layer:'alle',inspect:null,help:false,difficultyChoice:defaultDifficulty},state=>{
+function dispatchLog(s){return html.div({class:`alert-row log-${s.kind}`},html.span(`T${s.day}`),html.div(html.strong(s.title),html.small(s.body)));}
+function difficultyPicker(state){return html.label({class:`difficulty-control ${state.difficultyChoice!==game.difficulty?'queued':''}`,title:'Auswahl gilt ab der nächsten Krise'},
+ html.span('STUFE'),
+ html.select({'aria-label':'Schwierigkeitsgrad für die nächste Krise',value:state.difficultyChoice,
+  change:e=>{const id=difficultyConfig(e.target.value).id;state.difficultyChoice=id;try{localStorage.setItem(prefKey,id);}catch{};},
+  },...DIFFICULTIES.map(d=>html.option({value:d.id,selected:d.id===state.difficultyChoice},d.name))),
+ state.difficultyChoice!==game.difficulty?html.small('BEIM NEUSTART'):null);
+}
+function utilityButtons(state,audio,refresh,restart){return [
+ html.button({class:`text-button sound-switch ${audio.effects?'active':''}`,title:'Cuelume-Press-Töne an/aus','aria-pressed':audio.effects,'data-cuelume-press':'',click:()=>{toggleEffects();refresh();}},audio.effects?'TON AN':'TON AUS'),
+ html.button({class:`text-button sound-switch ${audio.music?'active':''}`,title:audio.error||'Leise Hintergrundmusik an/aus','aria-pressed':audio.music,'data-cuelume-press':'',click:async()=>{await toggleMusic();refresh();}},audio.error?'MUSIK FEHLER':audio.music?'MUSIK AN':'MUSIK AUS'),
+ html.button({class:'text-button',disabled:!!game.pending,click:()=>{state.help=!state.help;state.mobileMenu=false;}},'REGELN'),
+ html.button({class:'text-button',disabled:!!game.pending,click:()=>restart(false)},'NEUSTART')
+];}
+function mobileKpi(label,value,detail='',extra=''){return html.div({class:`mobile-kpi ${extra}`},html.span(label),html.strong(value),detail?html.small(detail):null);}
+function mobileDrawer(state,risk,audio,refresh,restart){
+ const cash=finance(game);
+ return html.div({class:'mobile-drawer',role:'dialog','aria-modal':'false','aria-label':'Spielmenü'},
+  html.div({class:'mobile-drawer-head'},html.strong('MENÜ'),html.button({class:'text-button mobile-close','aria-label':'Menü schließen','data-cuelume-press':'',click:()=>{state.mobileMenu=false;}},'✕')),
+  html.div({class:'mobile-drawer-grid'},
+   mobileKpi('TAG',`${game.day}/${DAYS}`,difficultyConfig(game.difficulty).name),
+   mobileKpi('BUDGET',money(game.budget),forecast(),'budget'),
+   mobileKpi('BESCHLÜSSE',`${game.actionsToday}/${MAX_ACTIONS}`,`${game.ops} verfügbar`),
+   mobileKpi('RISIKO',risk.label,risk.level>=2&&!risk.onCourse?`${risk.weakest} ${fmt(risk.weakestValue)} %`:`${risk.bottleneck} ${Math.round(risk.bottleneckValue)} %`, `risk-${risk.level}`),
+   mobileKpi('TEMPERATUR',`${fmt(game.temp)} °C`,'Tagesmaximum'),
+   mobileKpi('KOSTEN',money(cash.upkeep+cash.debtService),'laufend / Tag')
+  ),
+  html.div({class:'mobile-drawer-settings'},
+   difficultyPicker(state),
+   html.div({class:'mobile-drawer-actions'},
+    ...utilityButtons(state,audio,refresh,restart)
+   )
+  )
+ );
+}
+function mobileNavButton(state,id,label){return html.button({type:'button',class:`mobile-nav-button ${state.mobileView===id?'selected':''}`,'data-cuelume-press':'',click:()=>{state.mobileView=id;state.mobileMenu=false;if(id==='actions'&&state.tab==='alle')state.tab='wasser';}},html.span(label));}
+
+pfusch('crisis-game',{version:0,tab:'alle',layer:'alle',inspect:null,help:false,difficultyChoice:defaultDifficulty,mobileView:'map',mobileMenu:false,mobileActionPage:0},state=>{
  const refresh=()=>{state.version++;};
  const restart=(repeat=false)=>{
   game=createGame(repeat?game.seed:game.seed+1,state.difficultyChoice);
-  state.inspect=null;state.tab='alle';state.layer='alle';state.help=false;refresh();
+  const compact=typeof window!=='undefined'&&window.innerWidth<=900;
+  state.inspect=null;state.tab=compact?'wasser':'alle';state.mobileActionPage=0;state.layer='alle';state.help=false;state.mobileView='map';state.mobileMenu=false;refresh();
  };
+ const compactViewport=typeof window!=='undefined'&&window.innerWidth<=900;
+ if(compactViewport&&state.tab==='alle')state.tab='wasser';
  const cash=finance(game);
- const selected=currentSelection(state.inspect);
  const risk=outlook(game),audio=audioPrefs(),lastDay=finalDayPreview(game);
  const options=ACTIONS.filter(a=>state.tab==='alle'||a.group===state.tab);
+ const pageSize=!compactViewport?options.length:window.innerWidth>window.innerHeight?4:window.innerHeight>=760?5:window.innerHeight>=640?4:window.innerHeight>=560?3:2;
+ const actionPageCount=Math.max(1,Math.ceil(options.length/pageSize));
+ const actionPage=Math.min(state.mobileActionPage,actionPageCount-1);
+ const visibleOptions=compactViewport?options.slice(actionPage*pageSize,(actionPage+1)*pageSize):options;
+ const actionTabs=compactViewport?TABS.filter(([id])=>id!=='alle'):TABS;
+ const decisionTitle=compactViewport&&state.mobileView==='log'?'Protokoll':(game.over?'Abschlusslage':game.pending?'Lageentscheidung':'Maßnahmen');
+ const decisionBadge=compactViewport&&state.mobileView==='log'?'EINSATZPROTOKOLL':(game.over?'KRISENENDE':game.pending?'SOFORTENTSCHEIDUNG':`${game.actionsToday}/${MAX_ACTIONS} BESCHLOSSEN`);
  return [
   script(function(){attachSounds(this.shadowRoot);}),
-  html.div({class:`app urgency-${risk.level}`},
+  html.div({class:`app urgency-${risk.level} mobile-view-${state.mobileView} ${state.mobileMenu?'menu-open':''}`},
    html.header({class:'topbar'},
     html.div({class:'brand'},html.span({class:'brand-mark'},'D/26'),html.div(html.strong('DÜRREKRISE'),html.small('KRISENSTAB · DEUTSCHLAND'))),
+    html.div({class:'mobile-summary'},
+     mobileKpi('Tag',`${game.day}/${DAYS}`),
+     mobileKpi('Budget',money(game.budget),'verfügbar','budget'),
+     mobileKpi('Risiko',risk.label,`${game.actionsToday}/${MAX_ACTIONS} Beschlüsse`,`risk-${risk.level}`)
+    ),
+    html.button({class:'text-button mobile-menu-toggle','aria-label':'Menü öffnen oder schließen','aria-expanded':state.mobileMenu,'data-cuelume-press':'',click:()=>{state.mobileMenu=!state.mobileMenu;}},state.mobileMenu?'✕':'☰'),
     html.div({class:'top-stats'},
      topStat('TAG',`${game.day} / ${DAYS}`,null,'day-stat'),
      topStat('TAGESMAX.',`${fmt(game.temp)} °C`,'Hitze'),
      topStat('VERFÜGBARES BUDGET',money(game.budget),forecast(),'budget-stat'),
      topStat('BESCHLÜSSE',`${game.actionsToday} / ${MAX_ACTIONS}`,`${game.ops} verfügbar`),
      topStat('SYSTEMRISIKO',risk.label,risk.level>=2&&!risk.onCourse?`${risk.weakest}: ${fmt(risk.weakestValue)} % · Minimum 31 %`:`${risk.bottleneck}: ${Math.round(risk.bottleneckValue)} %`,`status-stat risk-${risk.level}`)),
-    html.div({class:'top-links'},
-      html.label({class:`difficulty-control ${state.difficultyChoice!==game.difficulty?'queued':''}`,title:'Auswahl gilt ab der nächsten Krise'},
-       html.span('STUFE'),
-       html.select({'aria-label':'Schwierigkeitsgrad für die nächste Krise',value:state.difficultyChoice,
-        change:e=>{const id=difficultyConfig(e.target.value).id;state.difficultyChoice=id;try{localStorage.setItem(prefKey,id);}catch{};},
-        },...DIFFICULTIES.map(d=>html.option({value:d.id,selected:d.id===state.difficultyChoice},d.name))),
-       state.difficultyChoice!==game.difficulty?html.small('BEIM NEUSTART'):null),
-      html.button({class:`text-button sound-switch ${audio.effects?'active':''}`,title:'Cuelume-Press-Töne an/aus','aria-pressed':audio.effects,'data-cuelume-press':'',click:()=>{toggleEffects();refresh();}},audio.effects?'TON AN':'TON AUS'),html.button({class:`text-button sound-switch ${audio.music?'active':''}`,title:audio.error||'Leise Hintergrundmusik an/aus','aria-pressed':audio.music,'data-cuelume-press':'',click:async()=>{await toggleMusic();refresh();}},audio.error?'MUSIK FEHLER':audio.music?'MUSIK AN':'MUSIK AUS'),html.button({class:'text-button',disabled:!!game.pending,click:()=>{state.help=!state.help;}},'REGELN'),html.button({class:'text-button',disabled:!!game.pending,click:()=>restart(false)},'NEUSTART'))),
+    html.div({class:'top-links'},difficultyPicker(state),...utilityButtons(state,audio,refresh,restart))
+   ),
+   state.mobileMenu?mobileDrawer(state,risk,audio,refresh,restart):null,
    html.main({class:'dashboard'},
     html.section({class:`map-panel panel map-urgency-${risk.level}`},
      html.div({class:'panel-head'},html.div(html.span({class:'eyebrow'},'STRATEGISCHES LAGEBILD'),html.h1('Deutschland · Infrastruktur')),html.div({class:'layer-tabs'},...LAYERS.map(([id,label])=>html.button({type:'button',class:`layer-tab ${state.layer===id?'selected':''}`,disabled:!!game.pending,click:()=>{state.layer=id;}},label)))),
      html.div({class:'map-body'},mapView(state),systemCard()),
      html.div({class:'map-foot'},html.span(`SZENARIO: ${game.scenarioName.toUpperCase()} · STUFE: ${difficultyConfig(game.difficulty).name.toUpperCase()}`),html.span('ZIEL: KERN 7 ≥ 31 % · BRAND < 40 · FLUT < 38'))),
-    html.section({class:`decision-panel panel ${game.pending?'decision-pending':''} ${game.over?'decision-finished':''}`},
-     html.div({class:'panel-head'},html.div(html.span({class:'eyebrow'},'FÜHRUNGSSTAB'),html.h2(game.over?'Abschlusslage':game.pending?'Lageentscheidung':'Maßnahmen')),html.span({class:'decisions-badge'},game.over?'KRISENENDE':game.pending?'SOFORTENTSCHEIDUNG':`${game.actionsToday}/${MAX_ACTIONS} BESCHLOSSEN`)),
-     html.div({class:'filters'},...TABS.map(([id,label])=>html.button({type:'button',class:`tab ${state.tab===id?'selected':''}`,disabled:game.over||!!game.pending,click:()=>{state.tab=id;}},label))),
-     html.div({class:'action-list',inert:game.over||!!game.pending,'aria-hidden':game.over||!!game.pending},...options.map(a=>actionRow(a,refresh))),
+    html.section({class:`decision-panel panel ${game.pending?'decision-pending':''} ${game.over?'decision-finished':''} ${compactViewport&&state.mobileView==='log'?'mobile-log':''}`},
+     html.div({class:'panel-head'},html.div(html.span({class:'eyebrow'},'FÜHRUNGSSTAB'),html.h2(decisionTitle)),html.span({class:'decisions-badge'},decisionBadge)),
+     html.div({class:'filters'},...actionTabs.map(([id,label])=>html.button({type:'button',class:`tab ${state.tab===id?'selected':''}`,disabled:game.over||!!game.pending,click:()=>{state.tab=id;}},label))),
+     html.div({class:'mobile-category-picker'},html.span('BEREICH'),html.select({'aria-label':'Maßnahmenbereich',value:state.tab,disabled:game.over||!!game.pending,change:e=>{state.tab=e.target.value;state.mobileActionPage=0;}},...TABS.filter(([id])=>id!=='alle').map(([id,label])=>html.option({value:id,selected:id===state.tab},label))),actionPageCount>1?html.div({class:'mobile-action-pager'},html.button({type:'button','aria-label':'Vorherige Maßnahmen',disabled:actionPage===0,click:()=>{state.mobileActionPage=Math.max(0,actionPage-1);}},'‹'),html.small(`${actionPage+1}/${actionPageCount}`),html.button({type:'button','aria-label':'Weitere Maßnahmen',disabled:actionPage===actionPageCount-1,click:()=>{state.mobileActionPage=actionPage+1;}},'›')):null),
+     html.div({class:'action-list',inert:game.over||!!game.pending,'aria-hidden':game.over||!!game.pending},...visibleOptions.map(a=>actionRow(a,refresh))),
+     html.aside({class:'mobile-status-aside','aria-label':'Versorgungsstatus neben Maßnahmen'},systemCard()),
      html.div({class:'decision-footer'},
       html.div(html.strong(lastDay?`TAG 18: ${lastDay.outcome==='win'?'Stabilisierung erwartet':'Mindestziele in Gefahr'}`:'Lage fortschreiben'),html.small(lastDay?`Prognose: Ø ${fmt(lastDay.avg)} % · ${lastDay.criteria.weak.map(x=>x.label).join(', ')||'alle Mindestwerte tragfähig'}`:`Täglich ${money(cash.income)} Einnahmen · ${money(cash.upkeep+cash.debtService)} laufende Kosten`)),
-      html.button({type:'button',class:'advance primary',disabled:game.over||!!game.pending,'data-cuelume-press':'','data-cuelume-release':'',click:()=>{if(advance(game)){playCue(game.pending?'error':'page');if(game.pending)state.layer='alle';refresh();}}},`TAG ${Math.min(DAYS,game.day+1)} →`)),
-     html.div({class:'alerts'},html.div({class:'alerts-label'},html.span('LETZTE MELDUNGEN'),html.span(`${game.log.length} IM PROTOKOLL`)),...game.log.slice(0,2).map(dispatchLog)),
+      html.button({type:'button',class:'advance primary',disabled:game.over||!!game.pending,'data-cuelume-press':'','data-cuelume-release':'',click:()=>{if(advance(game)){playCue(game.pending?'error':'page');if(game.pending){state.layer='alle';state.mobileView='actions';}if(game.over)state.mobileView='actions';refresh();}}},`TAG ${Math.min(DAYS,game.day+1)} →`)),
+     html.div({class:'alerts'},html.div({class:'alerts-label'},html.span('LETZTE MELDUNGEN'),html.span(`${game.log.length} IM PROTOKOLL`)),...game.log.slice(0,4).map(dispatchLog)),
      game.pending&&!game.over?eventPanel(game.pending,refresh):null,
      game.over?resultPanel(restart):null
     )),
-   html.footer({class:'footer'},html.span('DÜRREKRISE ’26 · EIN FIKTIVES PLANSPIEL'),html.span('Geometrie: isellsoap/deutschlandGeoJSON · Cuelume (MIT) · Originalton · ',html.a({href:'https://github.com/MatthiasKainer/pfusch',target:'_blank',rel:'noopener noreferrer'},'mit pfusch')))
+   html.footer({class:'footer'},html.span('DÜRREKRISE ’26 · EIN FIKTIVES PLANSPIEL'),html.span('Geometrie: isellsoap/deutschlandGeoJSON · Cuelume (MIT) · Originalton · ',html.a({href:'https://github.com/MatthiasKainer/pfusch',target:'_blank',rel:'noopener noreferrer'},'mit pfusch'))),
+   html.nav({class:'mobile-nav',role:'navigation','aria-label':'Schnellzugriff'},
+    mobileNavButton(state,'map','Karte'),
+    mobileNavButton(state,'actions','Aktionen'),
+    mobileNavButton(state,'log','Protokoll')
+   )
   ),
   state.help?helpOverlay(state):null,
   null
