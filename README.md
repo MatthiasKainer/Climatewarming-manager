@@ -1,49 +1,75 @@
-# DÜRREKRISE '26 — Krisenstab Deutschland
+# DÜRREKRISE '26 - Krisenstab Deutschland
 
-Ein schnelles, deterministisches Browser-Strategiespiel über systemische Risiken während einer extremen Hitze- und Dürrekrise. Inspiriert vom [Tagesschau-Bericht zur bundesweiten LÜKEX-Übung vom 7. November 2026](https://www.tagesschau.de/inland/gesellschaft/hitze-duerre-ausnahmezustand-krisenmanagement-100.html).
+Ein schnelles, aber bewusst unbequemes Browser-Strategiespiel über systemische Hitze- und Dürrefolgen. Es orientiert sich an der [Tagesschau-Berichterstattung zur LÜKEX-Übung](https://www.tagesschau.de/inland/gesellschaft/hitze-duerre-ausnahmezustand-krisenmanagement-100.html). Das Spiel ist **keine** behördliche Lageeinschätzung, echte Pegelprognose oder Kostenkalkulation.
 
-**Spielziel:** 18 Tage mit höchstens drei Maßnahmen pro Tag überstehen — ohne das Vertrauen, die kritische Versorgung oder die Logistik in den Kollaps laufen zu lassen. Die Zustände sind abstrahierte Indizes (0–100), **keine offiziellen Prognosen, echten Pegelwerte oder Messdaten**. Die Budgetangaben in Milliarden sind ausdrücklich fiktive, für den Spielrhythmus skalierte Krisenmittel, keine Kostenkalkulation.
+## Spielidee
 
-## Ressourcen
+Du musst 18 Tage Extremhitze überstehen. Der Bund kann nicht gleichzeitig alles reparieren. Es gibt nur **24 Krisenmittel (KM) am Anfang** und **5 KM pro Folgetag**, abzüglich laufender Vertragskosten und Kreditzinsen. KM sind bewusst erfundene Spielpunkte, keine Euro-Schätzungen.
 
-| Index | Was er abbildet | Wie er gekoppelt ist |
-| --- | --- | --- |
-| Trinkwasser | Verfügbarkeit von aufbereitetem Wasser | Stromausfall belastet Wasserwerke; Rationierung spart Wasser, kostet Vertrauen |
-| Rhein / Transportwasser | Index der Schiffbarkeit, nicht Kubikmeter | Niedrigwasser stört Gütertransporte und die Kühlwasserversorgung |
-| Energie | Reserve und Stabilität des Netzes | Hitzelast und Kühlwassermangel reduzieren die Versorgung |
-| Autobahnen | Betriebsfähigkeit | Blow-ups, Sperrungen und Schäden mindern die Lieferfähigkeit |
-| Logistik | Schiff, Straße und Schiene | Blockaden treiben Lebensmittelengpässe |
-| Gesundheit | Verfügbare Klinikreserve | Hitze, Strom- und Wasserknappheit drücken die Kapazität |
-| Lebensmittel | Versorgungsindex | Schlechtere Logistik und Wasserknappheit verschärfen die Lage |
-| Gesellschaft | Vertrauen in die Handlungsfähigkeit | Engpässe, falsche Meldungen und harte Eingriffe senken Akzeptanz |
-| Budget | Abstraktes Finanzpolster | Maßnahmen, Krisenentscheidungen und Kredite konkurrieren |
+Du darfst **höchstens zwei Maßnahmen je Tag** anordnen. Eine teure Anlage kostet nicht nur heute etwas, sondern oft auch an jedem Folgetag Unterhalt. Notkredite sind nur einmal möglich und senken das Vertrauen. Durch Nichtstun bleibt das finanzielle Polster für spätere Ereignisse erhalten. Es gibt **keinen Bonus für verbrauchte Beschluss-Slots**.
 
-13 Maßnahmen mit Sperrfristen und direkten oder mehrtägigen Auswirkungen. Acht redaktionell gesetzte Lageereignisse mit je zwei Entscheidungen. Der Rheinpegel kann nicht einfach mit Haushaltsmitteln aufgefüllt werden; Entnahmerestriktionen bremsen die Verschlechterung, Güter werden stattdessen auf die Schiene verlagert.
+### Zehn gekoppelte Engpässe
 
-**Spielregeln:** Für einen Erfolg muss am Ende der durchschnittliche Systemwert mindestens 56, der niedrigste Wert in Trinkwasser/Energie/Gesundheit/Lebensmitteln/Vertrauen mindestens 35 sowie Logistik und Vertrauen jeweils mindestens 32 bzw. 35 betragen. Kritische Frühabbrüche greifen bei Einzelwerten unter 14 oder drei Indizes unter 25 an zwei aufeinanderfolgenden Tagen. Der Zähler umfasst 18 simulierte Tage, die letzte Runde dient der Auswertung.
+| Anzeige | Bedeutung und Folgen |
+| --- | --- |
+| Trinkwasser | Versorgung, Wasserwerke, Löschwasserkonkurrenz |
+| Rhein/Transportwasser | Niedrigwasser stört Fracht und Kraftwerkskühlung |
+| Energie | Kraftwerksdrosselung, Klimatisierung, Wasseraufbereitung |
+| Autobahnen | Blow-ups, Umleitungen und brandschutzbedingte Sperrungen |
+| Logistik | Lieferkapazität auf Straße, Schiene und Rhein |
+| Gesundheit | Freie Klinikreserve und Hitzekranke |
+| Lebensmittel | Warenversorgung bei Ernteschäden und gestörter Logistik |
+| Feuerwehr & Katastrophenschutz | Ausrückbare Mannschaften, Überlastung, langsamere Erholung |
+| Gesellschaft | Vertrauen, Konflikte und Folgen von Rationierung |
+| Brandfront / Waldbrandgefahr | Getrennte Krisenwerte: aktive Brände können wachsen; Vorbeugung und Löschen sind verschieden |
+
+Dazu kommt der **Krisenfonds** als elfte, finanzielle Nebenbedingung.
+
+### Entscheidungen, die wehtun
+
+- Trinkwasser-Konvois helfen dem Wasserindex, nehmen aber Lkw aus der Logistik.
+- Löschzüge dämmen Brandfronten, benötigen Trinkwasser und erschöpfen Feuerwehrleute.
+- Notkliniken sichern Gesundheitsreserven, binden aber Einsatzkräfte.
+- Hitzeschutzräume helfen Menschen, belasten Strom und verursachen Unterhalt.
+- Strom- und Wasserrationierung sind billig, kosten Vertrauen und Produktion.
+- Feuerwehrprävention wirkt langfristig, aber nicht unmittelbar gegen eine große Brandfront.
+- Kredit finanziert Notlagen, verringert die nachfolgenden täglichen Zuflüsse und schadet der Glaubwürdigkeit.
+
+17 operative Maßnahmen und 9 feste Lageereignisse bilden die Dramaturgie, während Temperatur, lokale Entlastung und Feuerentwicklung innerhalb eines Seeds deterministisch simuliert werden. Jeder Seed ist wiederholbar. Der Spieler kann an manchen Tagen sinnvoll nichts anordnen.
+
+## Gewinnen und Scheitern
+
+Am Ende müssen der Durchschnitt der neun Versorgungsindizes mindestens 53, die schwächsten Kernsysteme mindestens 32 und die Logistik mindestens 32 erreichen. Die aktive Brandlast muss unter 40 bleiben. Vorzeitiges Systemversagen bei einzelnen Kernsystemen unter 14, längerem Mehrfachkollaps oder Bränden außer Kontrolle.
 
 ## Lokal starten
 
-```sh
+```bash
 python3 -m http.server 8080
 ```
 
-Dann `http://localhost:8080` öffnen. **Kein Bundler und keine Abhängigkeiten beim Build.** Die Weboberfläche verwendet [pfusch](https://github.com/MatthiasKainer/pfusch) als ESM-Modul über die offizielle GitHub-Pages-URL und braucht deshalb zur Laufzeit Internetzugang.
+Dann `http://localhost:8080` öffnen. Keine Build-Toolchain und kein Server-Backend. Das UI nutzt [pfusch](https://github.com/MatthiasKainer/pfusch) direkt als ESM-Modul über dessen GitHub-Pages-URL; eine Internetverbindung zum CDN wird benötigt.
 
-## Automatisierte Durchläufe
+## Tests und Balancing
 
-```sh
+```bash
 npm test
+node tests/balance.mjs
 ```
 
-Die Tests spielen mehrere vollständige Partien mit festem Seed, prüfen Sperrfristen, Effekte und Determinismus. Automatische Entscheidungsstrategien sind nur ein Balancing-Werkzeug, keine Garantie, dass eine Partie menschlich leicht oder schwer erscheint.
+Der eingebaute Test-Bot spielt 150 verschiedene Seeds in mehreren Stilen. Bei der abgestimmten Version gewinnt eine abwägende Strategie **83/150**, mit im Mittel **9,6 Maßnahmen** und an **9,5 Tagen ohne neue Maßnahme**. Absoluter Aktionismus (knapp 18 Eingriffe je Partie) und vollständige Untätigkeit gewinnen in diesem Test nicht. Das beweist keine menschliche Schwierigkeitskurve, ist aber ein reproduzierbarer Check gegen "Button-Spam ist immer optimal".
+
+Für einen optischen Chromium-Smoke-Test mit Playwright (lokal optional):
+
+```bash
+python3 tests/browser-v2.py
+```
+
+Dieser Browser-Smoke-Test benutzt einen kompatiblen kleinen Renderer statt der Produktionsversion von `pfusch`. Er prüft die Buttons, den Beschlusszähler, Ereignisse, Feuerwehr-Tab und mobile Breite. Der echte CDN-Pfad bleibt eine separate Integrationsprüfung.
 
 ## GitHub Pages
 
-`.github/workflows/deploy.yml` veröffentlicht bei Push auf `main` den statischen Inhalt über die offizielle Pages-Action (kein NPM-Build). Bei einem **privaten** Repository muss GitHub Pages im Repository unter **Settings → Pages → Build and deployment → Source: GitHub Actions** zugelassen sein. Die Workflow-Konfiguration versucht, die Einrichtung automatisch zu ermöglichen; ob dies funktioniert, hängt vom Repository-Plan und den Administrationsrechten ab.
+`.github/workflows/deploy.yml` publiziert automatisch bei Push auf `main`. Einmalig in den GitHub-Repository-Einstellungen unter **Pages > Source: GitHub Actions** aktivieren. Der GitHub-App-Token kann eine noch nicht eingerichtete Pages-Site nicht selbst anlegen.
 
-Vorgesehene URL: `https://matthiaskainer.github.io/Climatewarming-manager/` (erst nach erfolgreicher Pages-Bereitstellung).
+Zieladresse: `https://matthiaskainer.github.io/Climatewarming-manager/`
 
-## Hinweise
-
-Das Spiel ist ein **Fiktions- und Planspiel**, keine BBK-/LÜKEX-App. Aussagen und Mechaniken sind didaktisch vereinfacht; insbesondere Zahlen für Bundesbudget, Pegel und Versorgungsreserven sind frei gewählt. Kein Tracking, keine Nutzerdaten, keine Backend-API, keine bezahlten Deployments erforderlich.
+Das Modell verwendet fiktive Indizes und hypothetische Entscheidungen, keine behördlichen Prognosedaten. Kein Tracking, keine Nutzerkonten, keine Bezahl-APIs.

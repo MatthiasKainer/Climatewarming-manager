@@ -1,16 +1,16 @@
 import { pfusch, html } from 'https://matthiaskainer.github.io/pfusch/pfusch.min.js';
-import { DAYS, METRICS, ACTIONS, createGame, available, takeAction, chooseEvent, advance, grade } from './engine.js';
+import { DAYS, MAX_ACTIONS, METRICS, ACTIONS, createGame, finance, available, takeAction, chooseEvent, advance, grade } from './engine.js';
 
 let game=createGame();
 const fmt=n=>Math.round(n).toLocaleString('de-DE');
-const euro=n=>`${fmt(n)} Mrd.`;
+const funds=n=>`${Number(n).toLocaleString('de-DE',{maximumFractionDigits:1})} KM`;
 const pct=n=>`${fmt(n)} %`;
 const tone=n=>n<31?'danger':n<54?'warn':'ok';
 const sign=n=>n>0?`+${fmt(n)}`:fmt(n);
 const metric=id=>METRICS.find(m=>m.id===id);
-const iconText={wasser:'W',infrastruktur:'I',gesellschaft:'G',versorgung:'V',finanzen:'€'};
-const TOP=['water','power','health','trust'];
-const TABS=[['alle','Alle Bereiche'],['wasser','Wasser'],['infrastruktur','Infrastruktur'],['gesellschaft','Menschen'],['versorgung','Versorgung'],['finanzen','Finanzen']];
+const iconText={wasser:'W',infrastruktur:'I',gesellschaft:'G',versorgung:'V',feuerwehr:'F',finanzen:'€'};
+const TOP=['water','power','health','fire','trust'];
+const TABS=[['alle','Alle Bereiche'],['wasser','Wasser'],['infrastruktur','Infrastruktur'],['gesellschaft','Menschen'],['feuerwehr','Feuerwehr'],['versorgung','Versorgung'],['finanzen','Finanzen']];
 const regionList=[
   {name:'NORD',x:80,y:63,risk:1,description:'Küste & Kühlwasserversorgung'},
   {name:'OST',x:169,y:110,risk:4,description:'Landwirtschaft und Waldbrand'},
@@ -46,9 +46,11 @@ function systemRow(id) {
 }
 function actionCard(a, update) {
   const reason=available(game,a), used=!!reason;
+  const costs=a.funds?`+${funds(a.funds)}`:`−${funds(a.cost)}`;
+  const maintenance=a.upkeep?` + ${funds(a.upkeep)}/Tag (${a.upkeepDays} Tage)`:'';
   return html.button({class:`action ${used?'inactive':''}`,type:'button',disabled:!!reason,click:()=>{if(takeAction(game,a.id))update();}, title:reason||a.desc},
-    html.div({class:'action-heading'},html.span({class:'action-sigil'},iconText[a.group]),html.strong(a.name),html.span({class:'action-cost'},a.funds?`+${a.funds} Mrd.`:`−${a.cost} Mrd.`)),
-    html.p(a.desc),
+    html.div({class:'action-heading'},html.span({class:'action-sigil'},iconText[a.group]),html.strong(a.name),html.span({class:'action-cost'},costs)),
+    html.p(a.desc),html.small({class:'upkeep-note'},maintenance),
     html.div({class:'action-foot'},html.span(a.impact),html.span({class:'action-ready'},reason||'EINSETZEN')));
 }
 function heatMap() {
@@ -74,6 +76,19 @@ function heatMap() {
     ))
  );
 }
+
+function firePanel(){
+ const risk=Math.round(game.fireRisk),front=Math.round(game.fires),crew=Math.round(game.metrics.fire);
+ return html.section({class:'panel fire-panel'},
+  html.div({class:'panel-head'},html.div(html.div({class:'eyebrow'},'02 / FEUERWEHR & KATS'),html.h2('Waldbrandlage')),html.span({class:`chip ${front>25?'fire-alert':''}`},front>25?'GROSSLAGE':'EINSATZBEREIT')),
+  html.div({class:'fire-body'},
+   html.div({class:'fire-headline'},html.div(html.span('AKTIVE BRANDLAST'),html.strong(`${front} / 100`)),html.div(html.span('WALDBRANDGEFAHR'),html.strong(`${risk} / 100`))),
+   html.div({class:'fire-track'},html.div({style:`width:${front}%`,'class':'fire-fill'})),
+   html.div({class:'fire-track muted'},html.div({style:`width:${risk}%`,'class':'risk-fill'})),
+   html.p(`Feuerwehr- und KatS-Reserve: ${crew} %. Löscheinsätze brauchen Trinkwasser und erschöpfen Kräfte. Bei Ruhe erholen sie sich.`),
+  )
+ );
+}
 function logRow(entry) {
  return html.div({class:`log-item log-${entry.kind}`},
   html.div({class:'log-date'},`TAG ${String(entry.day).padStart(2,'0')}`),
@@ -84,8 +99,8 @@ function eventPanel(e,update){
     html.div({class:'eyebrow event-alert'},'● EILMELDUNG  /  ',e.category),
     html.h2(e.title),html.p({class:'event-description'},e.text),
     html.div({class:'event-choices'},...e.choices.map((c,i)=>html.button({class:'choice',type:'button',disabled:game.budget<c.cost,click:()=>{if(chooseEvent(game,i))update();}},
-      html.span({class:'choice-title'},html.strong(c.name),html.span(c.cost?`−${c.cost} Mrd.`:'0 Mrd.')),
-      html.span(c.text),html.small(Object.entries(c.effect).map(([k,v])=>`${metric(k).label} ${v>0?'+':''}${v}`).join(' · '))))),
+      html.span({class:'choice-title'},html.strong(c.name),html.span(c.cost?`−${funds(c.cost)}`:'Ohne Fondsabfluss')),
+      html.span(c.text),html.small([...Object.entries(c.effect).map(([k,v])=>`${metric(k).label} ${v>0?'+':''}${v}`),...(c.fires?[`Brandfront ${c.fires>0?'+':''}${c.fires}`]:[])].join(' · '))))),
     html.small({class:'event-footnote'},'Diese Entscheidung verbraucht keinen Maßnahmen-Slot. Die Lage entwickelt sich danach weiter.')
   ));
 }
@@ -96,7 +111,7 @@ function overlay(update){
   html.h2(game.outcome==='win'?'Deutschland hält durch.':'Die Krise überfordert das System.'),
   html.p(game.endedReason),
   html.div({class:'result-score'},html.strong(`${g.score}/100`),html.span(`${g.rank} · Ø ${g.avg} % Versorgung`)),
-  html.p({class:'result-summary'},`Nach ${game.day} Tagen, ${game.actionCount} Maßnahmen und ${game.debt} Mrd. € zusätzlicher Kreditlinie.`),
+  html.p({class:'result-summary'},`Nach ${game.day} Tagen, ${game.actionCount} Maßnahmen und ${game.debt} KM Notkredit. Verbleibender Fonds: ${funds(game.budget)}.`),
   html.div({class:'buttons'},html.button({click:()=>{game=createGame(game.seed+1);update();},class:'primary'},'Neue Lage spielen'),html.button({click:()=>{game=createGame(game.seed);update();},class:'outline'},'Gleiche Lage erneut')),
   html.small('Modellwerte und Ereignisse sind fiktiv. Keine reale Katastrophenprognose.')
   ));
@@ -104,8 +119,9 @@ function overlay(update){
 
 pfusch('crisis-game',{version:0,tab:'alle',help:false},state=>{
  const update=()=>{state.version++;};
- const readiness=game.pending?'LAGEENTSCHEIDUNG OFFEN':game.over?'ABSCHLUSS':game.ops===0?'TAGESKONTINGENT ERSCHÖPFT':'KRISENSTAB HANDLUNGSFÄHIG';
- const average=Object.values(game.metrics).reduce((a,b)=>a+b,0)/8;
+ const readiness=game.pending?'LAGEENTSCHEIDUNG OFFEN':game.over?'ABSCHLUSS':game.ops===0?'HEUTE KEINE BESCHLÜSSE MEHR':game.budget<7?'RESERVEN SCHONEN ODER PRIORISIEREN':'KRISENSTAB HANDLUNGSFÄHIG';
+ const average=Object.values(game.metrics).reduce((a,b)=>a+b,0)/METRICS.length;
+ const cash=finance(game);
  return [
   html.div({class:'app'},
    html.header({class:'topbar'},
@@ -117,9 +133,9 @@ pfusch('crisis-game',{version:0,tab:'alle',help:false},state=>{
     html.div({class:'day-count'},html.span('LAGE · TAG'),html.strong(`${String(game.day).padStart(2,'0')} / ${DAYS}`),html.div({class:'days-progress'},html.span({style:`width:${100*game.day/DAYS}%`})) )),
    html.section({class:'ticker'},
     html.div(html.span({class:'ticker-label'},'TAGESMAXIMUM'),html.strong(`${game.temp.toFixed(1).replace('.',',')} °C`),html.small('Extremhitze')),
-    html.div(html.span({class:'ticker-label'},'EINSATZBUDGET'),html.strong(euro(game.budget)),html.small('Modellwerte · kein Bundeshaushalt')),
-    html.div(html.span({class:'ticker-label'},'MASSNAHMEN HEUTE'),html.strong(`${game.ops} / 3`),html.small('Pro Tag erneuert')),
-    html.div(html.span({class:'ticker-label'},'SYSTEMSTABILITÄT'),html.strong(pct(average)),html.small('Durchschnitt aller Sektoren'))),
+    html.div(html.span({class:'ticker-label'},'EINSATZBUDGET'),html.strong(funds(game.budget)),html.small(`Morgen ${cash.net>=0?'+':''}${funds(cash.net)} netto`)),
+    html.div(html.span({class:'ticker-label'},'BESCHLÜSSE HEUTE'),html.strong(`${game.actionsToday} / ${MAX_ACTIONS}`),html.small(`${game.ops} heute noch frei`)),
+    html.div(html.span({class:'ticker-label'},'AKTIVE BRANDFRONT'),html.strong(pct(game.fires)),html.small(`Brandgefahr ${pct(game.fireRisk)}`))),
    html.section({class:'kpi-grid'},...TOP.map(valueCard)),
    html.div({class:'main-grid'},
     html.div({class:'left-stack'},
@@ -129,29 +145,30 @@ pfusch('crisis-game',{version:0,tab:'alle',help:false},state=>{
         html.strong('Regionale Gefährdung'),html.p('Die Karte visualisiert Hotspots, keine echten Messstationen oder Ländergrenzen.'),
         ...regionList.map(r=>html.div({class:'region-row'},html.span({class:`region-dot level-${r.risk}`}),html.div(html.strong(r.name),html.small(r.description)))))),
       html.div({class:'panel-bottom'},html.span('GERINGERE BELASTUNG'),html.div({class:'heat-scale'},...['#57949b','#dcad68','#ec8d51','#eb7149','#d84c42','#a83242'].map(c=>html.i({style:`background:${c}`}))),html.span('AKUTE HITZE'))),
+     firePanel(),
      html.section({class:'panel systems-panel'},
-      html.div({class:'panel-head'},html.div(html.div({class:'eyebrow'},'02 / KRITIS'),html.h2('Versorgungsnetze')),html.span({class:'chip'},'LIVE · MODELL')),
+      html.div({class:'panel-head'},html.div(html.div({class:'eyebrow'},'03 / KRITIS'),html.h2('Versorgungsnetze')),html.span({class:'chip'},'LIVE · MODELL')),
       html.div({class:'systems-grid'},...['river','roads','logistics','food'].map(systemRow)))
     ),
     html.div({class:'right-stack'},
      html.section({class:'panel decision-panel'},
-      html.div({class:'panel-head'},html.div(html.div({class:'eyebrow'},'03 / KRISENMANAGEMENT'),html.h2('Maßnahmen anordnen')),html.span({class:'ops-badge'},`${game.ops} FREI`)),
-      html.p({class:'decision-copy'},'Maximal drei Maßnahmen täglich. Geld, Sperrfristen und Nebenwirkungen begrenzen deine Optionen.'),
+      html.div({class:'panel-head'},html.div(html.div({class:'eyebrow'},'04 / KRISENMANAGEMENT'),html.h2('Maßnahmen anordnen')),html.span({class:'ops-badge'},`${game.actionsToday}/${MAX_ACTIONS} BESCHLOSSEN`)),
+      html.p({class:'decision-copy'},'Höchstens zwei Beschlüsse pro Tag, aber nur 24 KM am Start. Große Eingriffe verursachen Folgekosten. Nicht handeln kann die richtige Entscheidung sein.'),
       html.div({class:'tab-bar'},...TABS.map(([id,label])=>html.button({class:`tab ${state.tab===id?'selected':''}`,type:'button',click:()=>{state.tab=id;}},label))),
       html.div({class:'action-list'},...ACTIONS.filter(a=>state.tab==='alle'||a.group===state.tab).map(a=>actionCard(a,update))),
-      html.div({class:'advance-wrap'},html.div(html.strong('Nächsten Tag simulieren'),html.small('Wasserstände, Temperatur und Kettenreaktionen entwickeln sich weiter.')),
-       html.button({class:'primary advance',type:'button',disabled:game.over||!!game.pending,click:()=>{if(advance(game))update();}},`TAG ${Math.min(game.day+1,DAYS)}  →`))),
+      html.div({class:'advance-wrap'},html.div(html.strong('Tag beenden und Reserven sichern'),html.small(`Fonds morgen: +${funds(cash.income)} Zufluss −${funds(cash.upkeep)} Unterhalt −${funds(cash.debtService)} Zinsen = ${cash.net>=0?'+':''}${funds(cash.net)}. Die Hitze geht weiter.`)),
+       html.button({class:'primary advance',type:'button',disabled:game.over||!!game.pending,click:()=>{if(advance(game))update();}},`WEITER ZU TAG ${Math.min(game.day+1,DAYS)}  →`))),
      html.section({class:'panel log-panel'},
-       html.div({class:'panel-head'},html.div(html.div({class:'eyebrow'},'04 / LAGEPROTOKOLL'),html.h2('Meldungen')),html.span({class:'chip'},`${game.log.length} EINTRÄGE`)),
+       html.div({class:'panel-head'},html.div(html.div({class:'eyebrow'},'05 / LAGEPROTOKOLL'),html.h2('Meldungen')),html.span({class:'chip'},`${game.log.length} EINTRÄGE`)),
        html.div({class:'log-list'},...game.log.slice(0,7).map(logRow))))),
    html.footer({class:'footer'},html.span('DÜRREKRISE ’26 · EIN FIKTIVES SYSTEMRISIKO-SPIEL'),
      html.span('Inspiriert von der ',html.a({href:'https://www.tagesschau.de/inland/gesellschaft/hitze-duerre-ausnahmezustand-krisenmanagement-100.html',target:'_blank',rel:'noopener noreferrer'},'LÜKEX-Berichterstattung'),' · ',html.a({href:'https://github.com/MatthiasKainer/pfusch',target:'_blank',rel:'noopener noreferrer'},'gebaut mit pfusch')))
   ),
   state.help?html.div({class:'modal-backdrop'},html.div({class:'help-modal',role:'dialog','aria-modal':'true'},
    html.div({class:'eyebrow'},'KURZANLEITUNG'),html.h2('Die Lage ist ernst. Aber nicht aussichtslos.'),
-   html.p('Du übernimmst 18 Tage lang die Leitung eines bundesweiten Krisenstabs. Wähle bis zu drei Maßnahmen pro Tag und entscheide bei Eilmeldungen.'),
-   html.p('Wichtig: Energie und Kühlwasser, Logistik und Lebensmittel, Trinkwasser und Gesundheit beeinflussen sich gegenseitig. Einige Eingriffe sparen heute Ressourcen, kosten aber Vertrauen.'),
-   html.p('Gewonnen ist die Lage nur, wenn Versorgung und gesellschaftliche Stabilität am Ende tragfähig sind. Geld ist ein vereinfachter Spielwert; das Modell ist keine Prognose.'),
+   html.p('Du steuerst einen Krisenstab für 18 Tage. Du kannst maximal zwei Maßnahmen pro Tag beschließen. Beginne mit 24 Krisenmitteln (KM); pro neuem Tag fließen 5 KM zu, abzüglich Unterhalt und Kreditzinsen.'),
+   html.p('Brandfronten und Einsatzreserve sind getrennt: Brände können wachsen, während Feuerwehr und Katastrophenschutz erschöpfen. Löschen kostet Wasser, Geld und Personal. Entscheidungen erzeugen auch Nebenwirkungen.'),
+   html.p('Kein Aktionismus: Reserven bleiben über Tage bestehen, Kosten laufen nach. Wer heute alles ausgibt, kann morgen nicht mehr auf Notlagen reagieren. KM sind fiktive Spieleinheiten, keine realen Haushaltszahlen.'),
    html.button({class:'primary',click:()=>{state.help=false;}},'Lage übernehmen'))):null,
   game.pending && !game.over?eventPanel(game.pending,update):null,
   game.over?overlay(update):null
