@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createGame, finance, ACTIONS, EVENTS, START_BUDGET, DAILY_INCOME, MAX_ACTIONS, available, takeAction, advance, chooseEvent, DAYS, grade,routeCondition} from '../src/engine.js';
+import {createGame, finance, ACTIONS, EVENTS, START_BUDGET, DAILY_INCOME, MAX_ACTIONS, available, takeAction, advance, chooseEvent, DAYS, grade,routeCondition,SCENARIOS,outlook} from '../src/engine.js';
 import {run} from './balance.mjs';
 import {STATES,CITIES,CITY_BY_NAME,ROUTES,NODES} from '../src/geography.js';
 
@@ -71,7 +71,8 @@ test('fires are an actionable crisis with genuine operational tradeoffs',()=>{
  assert.equal(s.metrics.fire,crew-10);
  assert.ok(s.policy.fireline>0);
  assert.equal(takeAction(s,'dispatch'),false);
- assert.equal(available(createGame(),ACTIONS.find(a=>a.id==='dispatch')),'Keine ausreichend gro\u00dfe Brandfront');
+ const baseline=createGame(41);baseline.fires=0;
+ assert.equal(available(baseline,ACTIONS.find(a=>a.id==='dispatch')),'Keine ausreichend gro\u00dfe Brandfront');
 });
 
 test('firefighting and logistics have coupled consequences',()=>{
@@ -130,26 +131,60 @@ test('day 18 ends play and final grading is bounded',()=>{
  }
 });
 
-test('Starkregen induces flash floods and several route-specific bottlenecks',()=>{
+test('Rhein-Main downpour briefly refills the Rhine but burdens drinking-water treatment',()=>{
  const s=createGame(21);
- for(let day=2;day<=5;day++){
+ let found=false,priorRiver=0,priorWater=0;
+ for(let day=2;day<=6;day++){
   if(s.pending)assert.ok(chooseEvent(s,1));
+  priorRiver=s.metrics.river;priorWater=s.metrics.water;
   assert.ok(advance(s));
-  assert.equal(s.day,day);
+  if(s.pending?.title==='Starkregenfront über Rhein-Main'){found=true;break;}
  }
+ assert.ok(found,'Rhein-Main event appears in early crisis phase');
  assert.equal(s.pending.category,'STARKREGEN');
+ assert.ok(s.metrics.river>priorRiver+5,'more water enters the Rhine');
+ assert.ok(s.metrics.water<priorWater,'raw-water pollution stresses treatment');
+ assert.ok(s.riverPulseDays>0,'run-off increase is temporary');
  assert.ok(s.flood>=15);
  assert.ok(s.storm>=75);
  assert.ok(s.routeIncidents.A3.penalty>=20);
  assert.ok(routeCondition(s,'A3').score<routeCondition(s,'A9').score);
  const fireRisk=s.fireRisk, floodBefore=s.flood;
  assert.ok(chooseEvent(s,1));
- assert.ok(s.flood<floodBefore,'defensive closures should reduce flood exposure');
- assert.ok(available(s,ACTIONS.find(a=>a.id==='pumps'))==='','pump measures become available in flooded areas');
+ assert.ok(s.flood<floodBefore);
+ assert.equal(available(s,ACTIONS.find(a=>a.id==='pumps')),'');
  assert.ok(takeAction(s,'pumps'));
  assert.ok(s.flood<floodBefore-10);
- assert.ok(s.metrics.fire<80,'pumping binds emergency personnel');
+ assert.ok(s.metrics.fire<80);
  assert.ok(s.fireRisk<=fireRisk+1);
+ const high=s.metrics.river;
+ if(!s.over)assert.ok(advance(s));
+ assert.ok(s.metrics.river<high,'pulse recedes rather than permanently ending the drought');
+});
+
+test('new crisis seeds produce genuinely different opening problems and event timing',()=>{
+ const a=createGame(41),b=createGame(42),same=createGame(41);
+ assert.deepEqual(a.metrics,same.metrics);
+ assert.equal(a.scenario,same.scenario);
+ assert.deepEqual(Object.entries(a.timeline).map(([k,v])=>[k,v.title]),Object.entries(same.timeline).map(([k,v])=>[k,v.title]));
+ assert.notEqual(a.scenario,b.scenario);
+ assert.notDeepEqual(a.metrics,b.metrics);
+ assert.equal(Object.keys(a.timeline).length,Object.keys(EVENTS).length);
+ assert.ok(SCENARIOS.length>=4);
+});
+
+test('at 40 percent, warning text shows proximity to failure thresholds',()=>{
+ const s=createGame(21);
+ for(const id of Object.keys(s.metrics))s.metrics[id]=40;
+ let risk=outlook(s);
+ assert.ok(risk.level>=2);
+ assert.equal(risk.weakestValue,40);
+ s.metrics.water=19;s.metrics.health=22;s.metrics.fire=21;
+ risk=outlook(s);
+ assert.equal(risk.level,3);
+ assert.equal(risk.criticalCount,3);
+ assert.ok(risk.margin<=8);
+ assert.match(risk.statement,/Ausfallschwelle/);
 });
 
 test('German geometry has 16 real federal states, cities, and a real corridor graph',()=>{

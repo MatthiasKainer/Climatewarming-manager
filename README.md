@@ -10,8 +10,8 @@ Ein schnelles, grafisch kompaktes Krisenmanagement-Spiel mit **18 Tagen**, zwei 
 - Maximal **zwei Beschlüsse pro Tag**. Nichtstun kostet keinen Beschluss und lässt Mittel für spätere Katastrophen übrig.
 - Feuerwehren löschen Brände nur mit Wasser und Einsatzkräften; Personal erholt sich langsam. Konvois und Katastrophenschutz konkurrieren um Diesel, Strom, Logistik und Fahrzeuge.
 - Bei Hitze entstehen Straßenschäden (Blow-ups). Der Rhein wird schwer befahrbar. Stromnetze, Gesundheitssystem, Lebensmittel und Vertrauen beeinflussen sich gegenseitig.
-- **Starkregen** trifft auch ausgetrocknete Regionen. Ein lokales Gewitter kann die Brandgefahr verringern, zugleich aber Sturzfluten und Straßensperrungen auslösen. Unterführungen werden geflutet, Wasserwerke und Stromnetze belastet, Feuerwehr / KatS benötigt Pumpen und Sandsäcke.
-- An den Tagen 5, 11 und 16 treffen modellierte Starkregenereignisse verschiedene Korridore; Ereignisentscheidungen kosten kein Beschlusslimit, aber ggf. Geld und andere Ressourcen.
+- **Starkregen** auf ausgetrocknetem Boden erhöht kurzfristig den oberflächlichen Abfluss. Im Rhein-Main-Ereignis erhält der Rhein **+9 Schifffahrts-Indexpunkte**, die über drei Tage zusätzlich abklingen. Die Trinkwasserversorgung kann gleichzeitig durch verschmutztes Rohwasser Schaden nehmen. Lokale Sturzfluten, überflutete Unterführungen, Stromschäden und Feuerwehr-/KatS-Einsätze bleiben ein Zielkonflikt. Regen in Norddeutschland erhöht dagegen nicht automatisch den Rheinpegel.
+- Drei regionale Starkregenereignisse treffen unterschiedliche Korridore. **Ereignistage variieren** innerhalb von Krisenphasen, bleiben aber pro Seed reproduzierbar. Ereignisentscheidungen kosten kein Beschlusslimit, aber ggf. Geld und andere Ressourcen.
 
 ## Kompaktes Lagebild
 
@@ -19,7 +19,19 @@ Die Karte ist **Deutschland mit tatsächlichen vereinfachten Ländergrenzen** (1
 
 **Grün** = befahrbar; **Gelb** = eingeschränkt; **Rot** = kritisch/gesperrt. Straßenfarben ändern sich durch Hitze, Überflutungen, Brandlast und Ereignissperrungen. Animierte Frachtbewegungen, Radar-Ringe und Warnmarker sind rein visuelle Simulationselemente. Bei reduzierter Bewegung (`prefers-reduced-motion`) werden die Animationen ausgeschaltet.
 
-Die Oberfläche ist für 1280–1440 px breite Desktops als ein einzelner Leitstand ausgelegt; nur die **interne Maßnahmenliste** scrollt. Auf mobilen Geräten stapelt sich die Darstellung.
+Die Oberfläche ist für 1280–1440 px breite Desktops als ein einzelner Leitstand ausgelegt; nur die **interne Maßnahmenliste** scrollt. **Lageentscheidungen** erscheinen direkt über dem Maßnahmenbereich; die Karte, alle neun Versorgungsindizes und ein kompakter Vergleich der vier schwächsten Systeme bleiben sichtbar. Währenddessen sind Maßnahmen, Fortschreiben, Layerwechsel und Neustart deaktiviert. Auf mobilen Geräten stapelt sich die Darstellung.
+
+### Frühwarnung und wechselnde Ausgangslage
+
+Jede neue Krise startet aus **einem von fünf Anfangsprofilen** (Hitze, Niedrigwasser, Waldbrand, Versorgungsengpass, wechselhaftes Wetter) mit geringfügiger deterministischer Variation von neun Ressourcen. Die Lageereignisse wechseln innerhalb von Phasen ihre Reihenfolge. „Dieselbe Krise erneut“ reproduziert hingegen denselben Seed.
+
+Die Farbwarnung **STABIL → ANGESPANNT → ERNST → AKUTE KRISE** berücksichtigt Versorgungspuffer, Brände, Überflutung und laufende Trends. Wenn die aktuelle Lage unter dem Endziel liegt, steht explizit **ZIELWERT VERFEHLT** in der Karte: Durchschnitt mindestens 47,5 %, Kernsysteme mindestens 31 %, Logistik mindestens 31 % sowie begrenzte Brand- und Flutlast am Tag 18. Ein Kernsystem unter 14 % oder länger kollabierende Systeme können vorher zur Niederlage führen. Auf der Karte verdunkeln sich Länder, Routen wechseln entsprechend ihrem modellierten Zustand zu Orange/Rot und gefährdete Versorgungsstandorte pulsieren. Das ist **kein probabilistisches Wettermodell**, sondern eine direkte Anzeige der Spielregeln und des momentanen Zustands.
+
+### Audio
+
+- **Cuelume** v0.2.2 (MIT) wird im Browser bei Bedarf von `cdn.jsdelivr.net` geladen und liefert `press`/`release` und kontextuelle Rückmeldungen. Die Delegation erfolgt innerhalb von `pfusch`-Shadow-DOM. Falls das CDN nicht erreichbar ist, liefert Web Audio einen leisen Ersatzklick statt die UI zu blockieren.
+- Die **optional zuschaltbare Hintergrundmusik** ist ein eigens programmiertes, ruhiges Web-Audio-Ambientmotiv. Es verwendet **keine externe Musikaufnahme** und keine fremden Melodien; kein Lizenz- oder Royalty-Risiko für ein Audioasset. Musik ist bei jedem Seitenaufruf zunächst **aus**. Soundeffekte können jederzeit über `TON AN/AUS` abgeschaltet werden; die Präferenz wird lokal gespeichert.
+- Keine automatischen Töne vor Benutzerinteraktion, kein Tracking.
 
 ### Modellierte Engpässe
 
@@ -32,12 +44,12 @@ Trinkwasser · Rhein/Transportwasser · Energie · Autobahnen · Logistik · Ges
 ```bash
 npm test
 node tests/balance.mjs
-python3 tests/browser-v3.py  # optional, benötigt Python Playwright und Chromium
+python3 tests/browser-v4.py  # optional, benötigt Python Playwright und Chromium
 ```
 
-11 automatisierte Tests prüfen Budget, Abhängigkeiten, Feuerwehr, Sturzflut, Korridore und 150 wiederholbare Simulationsläufe pro Strategie. Zusätzlich wurden **500 Seeds je Strategie** getestet: abwägend **326 Siege / 500**, Daueraktionismus **0 / 500**, völlige Untätigkeit **0 / 500**. Die abwägende Strategie setzt etwa **9 Maßnahmen** ein und lässt etwa **10 Tage** ganz ohne Aktion verstreichen. Dies ist eine Bot-Balance, **keine** validierte menschliche Schwierigkeitsmessung.
+13 automatisierte Tests prüfen Budget, Abhängigkeiten, Feuerwehr, Rheinpegel nach Starkregen, wechselnde Anfangsbedingungen, Verlustwarnung, Korridore und 150 wiederholbare Simulationsläufe pro Strategie. Nach der V4-Anpassung: 150 Seeds je Strategie — **abwägend 92 Siege / 150**, Daueraktionismus **0 / 150**, völlige Untätigkeit **0 / 150**. Die abwägende Strategie setzt etwa **9 Maßnahmen** ein und lässt etwa **10 Tage** ganz ohne Aktion verstreichen. Dies ist eine Bot-Balance, **keine** validierte menschliche Schwierigkeitsmessung.
 
-Chromium prüft die Kartenmarker, Layer, Beschlussanzeige, Starkregenereignis, mehrere vollständige Partien sowie die mobile Breite. Der Browser-Smoke-Test verwendet zur Offline-Sichtprüfung einen kompatiblen Renderer; der produktive `pfusch`-Import wird über die GitHub-Pages-URL eingebunden.
+Chromium prüft die Kartenmarker, Krisen-Overlay mit freier Statusansicht, deaktivierte Maßnahmen, Audio-Toggles, Verlustwarnungen, mehrere vollständige Partien sowie 1280–1440 px Viewports und mobile Breite. Der Browser-Smoke-Test verwendet zur Offline-Sichtprüfung einen kompatiblen Renderer; der produktive `pfusch`-Import wird über die GitHub-Pages-URL eingebunden.
 
 ## Lokal starten
 
@@ -51,6 +63,8 @@ Dann `http://localhost:8080` öffnen. Kein Build, keine Telemetrie, keine Datenb
 
 - **Bundesländer**: [isellsoap/deutschlandGeoJSON](https://github.com/isellsoap/deutschlandGeoJSON), `2_bundeslaender/4_niedrig.geo.json` (Unlicense, GIS-DATA). Für ein SVG mit 2,7 px Toleranz vereinfacht und ins lokale Bundle übernommen. Vereinfacht, nicht vermessungsgenau.
 - **Autobahnrouten**: Hauptstadtkorridore und wichtige Verläufe anhand des [ADAC-Überblicks](https://www.adac.de/verkehr/recht/verkehrsvorschriften-deutschland/autobahnen-deutschland/) und der Städtegeografie. Die Kurven zwischen Städten sind **nicht** exakte Straßenachsen, Sperrungen rein spielintern.
+- **Wasserbilanz**: [DKKV zu Abfluss und trockenen Böden](https://dkkv.org/en/topics/floods/) sowie [Umweltbundesamt zu Sturzfluten](https://www.umweltbundesamt.de/en/themen/klima-energie/klimafolgen-anpassung/folgen-des-klimawandels/monitoring-zur-das/das-handlungsfelder-indikatoren/bauwesen/bau-i-4-heavy-rain-in-residential-areas).
+- **Audio**: [Cuelume](https://github.com/Danilaa1/cuelume), MIT, Benutzeroberflächen-Geräusche live per Web Audio.
 - **Starkregenrisiko**: [BBK: Starkregen und Sturzfluten](https://www.bbk.bund.de/DE/Themen/Risikomanagement/Baulicher-Bevoelkerungsschutz/Schutz-vor-Naturgefahren/Starkregen/starkregen.html). Die Modellmechanik ist davon inspiriert, aber **keine hydrologische Prognose**.
 
 ## Deployment

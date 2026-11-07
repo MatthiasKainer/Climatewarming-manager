@@ -15,6 +15,15 @@ export const METRICS = [
   { id:'trust', label:'Gesellschaft', unit:'Vertrauen', icon:'\u25ce', detail:'Akzeptanz, Informationslage und Belastbarkeit der Bev\u00f6lkerung.' },
 ];
 const INITIAL = { water:74,river:45,power:82,roads:84,logistics:80,health:82,food:83,fire:77,trust:75 };
+// Different initial problem sets. The same seed always recreates the same scenario.
+export const SCENARIOS = [
+ {id:'hitze',name:'Gluthitze im Westen',intro:'Hitze, Kliniklast und Wasserentnahme prägen den Auftakt.',metrics:{water:-3,health:-2,power:-1,river:-2},fireRisk:1},
+ {id:'niedrigwasser',name:'Rhein am Limit',intro:'Niedrigwasser blockiert früh Transporte und Kühlketten.',metrics:{river:-6,logistics:-3,food:-1,water:2},fireRisk:-3},
+ {id:'waldbrand',name:'Waldbrandgefahr im Osten',intro:'Einsatzkräfte sind bereits gebunden, Waldbrandgefahr ist erhöht.',metrics:{fire:-4,roads:-2,health:-1,river:2},fireRisk:11,fires:5},
+ {id:'versorgung',name:'Versorgungsengpass im Süden',intro:'Lebensmittel und Straßen fallen schwächer aus, der Strom hält.',metrics:{food:-4,roads:-3,logistics:-2,power:3},fireRisk:2},
+ {id:'wechselwetter',name:'Hitze & Gewitter',intro:'Unbeständiges Wetter, belastete Netze und örtliche Überflutungen.',metrics:{power:-3,water:-1,roads:-3,fire:2},fireRisk:-4,flood:5},
+];
+const EVENT_BLOCKS=[[3,4,5,6],[8,10,11,12],[14,15,16,17]];
 // Numbers represent simplified billions of euros of discretionary crisis funding, not actual budget estimates.
 export const ACTIONS = [
  { id:'leaks', group:'wasser', name:'Wasserwerke abdichten',desc:'Einmal investieren, f\u00fcnf Tage geringere Leitungsverluste. Bindet Wartungspersonal.', cost:12,cooldown:6,effect:{water:3,roads:-2},policy:['leaks',5],upkeep:1,upkeepDays:5,impact:'Wasser +3 und t\u00e4glich Entlastung; Stra\u00dfen \u22122; 5 Tage Unterhalt' },
@@ -38,11 +47,11 @@ export const ACTIONS = [
  { id:'credit',group:'finanzen',name:'Notkredit beschlie\u00dfen',desc:'Nur einmal m\u00f6glich. Heute fl\u00fcssig, bis Krisenende Zinslast und Vertrauensverlust.',cost:0,cooldown:30,limit:1,effect:{trust:-10},funds:24,impact:'Fonds +24 Mrd. €; Vertrauen \u221210; 1,5 Mrd. € pro Tag Zinsen' },
 ];
 export const EVENTS = {
- 5:{title:'Starkregenfront über Rhein-Main',category:'STARKREGEN',text:'Auf ausgetrocknetem Boden fließt Wasser oberflächlich ab. Unterführungen laufen voll; Stromstationen und Notwasserstellen sind bedroht.',impact:{water:-3,power:-1,roads:-4,logistics:-3,fire:-4},flood:19,storm:80,stormZone:'Frankfurt',routes:[{id:'A3',penalty:24,days:4},{id:'A5',penalty:13,days:3}],choices:[
+ 5:{title:'Starkregenfront über Rhein-Main',category:'STARKREGEN',text:'Starkregen lässt den Rheinpegel vorübergehend steigen – aber auf ausgetrockneten Böden fließt viel Wasser sofort ab. Unterführungen laufen voll und verschmutztes Rohwasser überfordert Aufbereitungsanlagen.',impact:{water:-3,power:-1,roads:-4,logistics:-3,fire:-4},riverPulse:9,flood:19,storm:80,stormZone:'Frankfurt',routes:[{id:'A3',penalty:24,days:4},{id:'A5',penalty:13,days:3}],choices:[
   {name:'Pumpen und Sandsäcke bündeln',text:'Begrenzt die Flut, schwächt aber den übrigen Feuerwehr- und Katastrophenschutz.',cost:10,effect:{roads:4,water:2,fire:-7},flood:-18},
   {name:'Unterführungen sperren',text:'Geringere Unfallgefahr. Überflutungen bleiben, Lieferketten leiden.',cost:0,effect:{roads:3,logistics:-4,trust:-2},flood:-5}
  ]},
- 11:{title:'Gewitterlinie über Norddeutschland',category:'STARKREGEN',text:'Sturzfluten setzen Knotenpunkte an A2 und A24 unter Wasser. Die Feuerwehr ist zugleich mit Vegetationsbränden beschäftigt.',impact:{roads:-4,logistics:-4,fire:-4,power:-1,water:-2},flood:20,storm:92,stormZone:'Magdeburg',routes:[{id:'A2',penalty:26,days:4},{id:'A24',penalty:19,days:4}],choices:[
+ 11:{title:'Gewitterlinie über Norddeutschland',category:'STARKREGEN',text:'Sturzfluten setzen Knotenpunkte an A2 und A24 unter Wasser. Lokale Flüsse führen mehr Wasser, der Rhein profitiert davon kaum. Feuerwehr und KatS werden gebunden.',impact:{roads:-4,logistics:-4,fire:-4,power:-1,water:-2},flood:20,storm:92,stormZone:'Magdeburg',routes:[{id:'A2',penalty:26,days:4},{id:'A24',penalty:19,days:4}],choices:[
   {name:'KatS in den Norden verlegen',text:'Öffnet Wege schneller, entzieht anderen Regionen Einsatzkräfte.',cost:11,effect:{roads:8,logistics:4,fire:-8},flood:-19},
   {name:'Umleitungen & Evakuierungen',text:'Kostet wenig Geld, aber blockiert Warenströme und Unterkünfte.',cost:0,effect:{health:2,logistics:-4,trust:-3},flood:-7}
  ]},
@@ -94,11 +103,35 @@ function temperature(s) {return round(38.5 + 2.8*Math.sin((s.day+1)*.76)+2.5*ran
 function log(s,title,body,kind='info') {s.log.unshift({day:s.day,title,body,kind});s.log.length=Math.min(36,s.log.length);}
 function record(s) {s.history.push({day:s.day,heat:s.temp,budget:round(s.budget),fires:round(s.fires),fireRisk:round(s.fireRisk),flood:round(s.flood),...s.metrics});}
 function syncToday(s) {const last=s.history.at(-1); if(last?.day===s.day) Object.assign(last,{budget:round(s.budget),fires:round(s.fires),fireRisk:round(s.fireRisk),flood:round(s.flood),...s.metrics});}
+function eventTimeline(s){
+ const schedule={};
+ for(const [day,event] of Object.entries(EVENTS)) schedule[Number(day)]=event;
+ for(const block of EVENT_BLOCKS){
+  const days=[...block];
+  // Fisher-Yates shuffle of events inside each four-day phase, reproducible per seed.
+  const events=days.map(d=>EVENTS[d]);
+  for(let i=events.length-1;i>0;i--){const j=Math.floor(rand(s)*(i+1));[events[i],events[j]]=[events[j],events[i]];}
+  days.forEach((d,i)=>schedule[d]=events[i]);
+ }
+ return schedule;
+}
 export function createGame(seed=20261107){
  const s={seed,rng:(seed>>>0)||1,day:1,temp:40,budget:START_BUDGET,debt:0,ops:MAX_ACTIONS,actionsToday:0,
- metrics:{...INITIAL},fires:0,fireRisk:44,flood:0,storm:0,stormZone:'',routeIncidents:{},policy:{},upkeep:[],lastUsed:{},used:{},log:[],history:[],pending:null,
+ metrics:{...INITIAL},fires:0,fireRisk:44,flood:0,storm:0,stormZone:'',riverPulseDays:0,
+ routeIncidents:{},policy:{},upkeep:[],lastUsed:{},used:{},log:[],history:[],pending:null,timeline:{},
  over:false,outcome:null,criticalDays:0,endedReason:'',actionCount:0,shortfallDays:0};
- s.temp=temperature(s);log(s,'Krisenstab \u00fcbernimmt','24 Mrd. € frei verfügbar, 5 Mrd. € je neuem Tag (vereinfachtes Modell). G\u00fcnstige Entscheidungen haben oft harte Nebenwirkungen. Reserven sind wichtig.');record(s);return s;
+ const scenario=SCENARIOS[(seed>>>0)%SCENARIOS.length];
+ s.scenario=scenario.id;s.scenarioName=scenario.name;
+ for(const k of Object.keys(s.metrics)){
+   const variation=Math.floor(rand(s)*5)-2;
+   s.metrics[k]=clamp(INITIAL[k]+(scenario.metrics[k]||0)+variation);
+ }
+ s.fireRisk=clamp(s.fireRisk+(scenario.fireRisk||0)+Math.floor(rand(s)*7)-3);
+ s.fires=scenario.fires||0;s.flood=scenario.flood||0;
+ s.timeline=eventTimeline(s);
+ s.temp=temperature(s);
+ log(s,scenario.name,`${scenario.intro} 24 Mrd. € frei, je neuem Tag 5 Mrd. € Zufluss. Ressourcen und Ereignisfolge variieren je Krise.`);
+ record(s);return s;
 }
 export function finance(s){
  const upkeep=round(s.upkeep.reduce((sum,item)=>sum+item.amount,0));
@@ -110,6 +143,7 @@ function special(s,x){
  if(x.policy) s.policy[x.policy[0]]=Math.max(s.policy[x.policy[0]]||0,x.policy[1]);
  if(x.fireRisk) s.fireRisk=round(clamp(s.fireRisk+x.fireRisk));
  if(x.fires) s.fires=round(clamp(s.fires+x.fires));
+ if(x.riverPulse){s.metrics.river=round(clamp(s.metrics.river+x.riverPulse));s.riverPulseDays=3;log(s,'Rheinpegel kurzfristig gestiegen',`Mehr Abfluss verbessert die Schiffbarkeit um ${x.riverPulse} Indexpunkte. Das Wasser ist nicht automatisch Trinkwasser; der Effekt klingt rasch ab.`,'weather');}
  if(x.flood){
   s.flood=round(clamp(s.flood+x.flood));
   // Heavy rainfall can lower wildfire risk, even as run-off floods roads and basements.
@@ -160,6 +194,7 @@ function pressure(s,didAct){
  trust:-.45-.38*low('water')-.48*low('food')-.25*low('power')-(p.ration?.32:0)-(p.load?.45:0)
  };
  for(const [key,delta]of Object.entries(d))m[key]=round(clamp(m[key]+delta));
+ if(s.riverPulseDays>0){s.metrics.river=round(clamp(s.metrics.river-2.3));s.riverPulseDays--;}
  const rain=rand(s)<.11;
  s.fireRisk=round(clamp(s.fireRisk+1.55+.27*hot+.38*low('river',55)-(p.firewatch?2.4:0)-(rain?11:0)));
  const ignition=Math.max(0,(s.fireRisk-46)/8.2)+Math.max(0,(52-m.fire)/12)+rand(s)*1.2;
@@ -187,7 +222,7 @@ function assess(s){
   s.over=true;
   const avg=Object.values(m).reduce((a,b)=>a+b,0)/METRICS.length;
   const vital=Math.min(m.water,m.power,m.health,m.food,m.fire,m.trust);
-  const stabilized=avg>=49&&vital>=32&&m.logistics>=32.5&&s.fires<40&&s.flood<38;
+  const stabilized=avg>=47.5&&vital>=31&&m.logistics>=31&&s.fires<40&&s.flood<38;
   s.outcome=stabilized?'win':'loss';
   s.endedReason=stabilized?'Die Hitzephase ist \u00fcberstanden. Versorgung und Einsatzf\u00e4higkeit sind noch tragf\u00e4hig.':'Die Hitze endet, aber mindestens ein kritisches System bleibt instabil.';
  }
@@ -196,7 +231,7 @@ export function advance(s){
  if(s.over||s.pending||s.day>=DAYS)return false;
  const didAct=s.actionsToday>0;
  s.day++;s.ops=MAX_ACTIONS;s.temp=temperature(s);
- pressure(s,didAct);s.actionsToday=0;const e=EVENTS[s.day];
+ pressure(s,didAct);s.actionsToday=0;const e=s.timeline[s.day];
  if(e){applyEffects(s,e.impact);special(s,e);s.pending=e;log(s,e.title,e.text,'event');}
  else if(s.flood>=20){log(s,'Hochwasser-Einsätze dauern an',`Überflutung ${Math.round(s.flood)}/100. Pumpen und Feuerwehren bleiben gebunden.`,'warning');}
  else if(s.fires>=26){log(s,'Brandfronten wachsen',`Aktive Br\u00e4nde ${Math.round(s.fires)}/100. Wasser und Einsatzkr\u00e4fte reichen nicht mehr \u00fcberall.`,'warning');}
@@ -220,3 +255,28 @@ export function routeCondition(s,id){
  score=round(clamp(score-(incident?.penalty||0)));
  return {id,score,status:score<34?'Gesperrt':score<49?'Kritisch':score<68?'Eingeschränkt':'Befahrbar',tone:score<49?'danger':score<68?'warn':'ok',incident:incident?.reason||'',days:incident?.days||0};
 }
+
+// Deterministic early-warning model: no fictitious forecast probability.
+export function outlook(s){
+ const criticalIds=['water','power','health','food','fire','trust'];
+ const minimum=criticalIds.map(k=>({id:k,value:s.metrics[k]})).sort((a,b)=>a.value-b.value);
+ const weakest=minimum[0];
+ const low24=Object.entries(s.metrics).filter(([,v])=>v<24).map(([id])=>id);
+ const dangerouslyLow=minimum.filter(m=>m.value<30);
+ const avg=Object.values(s.metrics).reduce((a,b)=>a+b,0)/METRICS.length;
+ const bottleneck=METRICS.map(m=>({label:m.label,value:s.metrics[m.id]})).sort((a,b)=>a.value-b.value)[0];
+ let level=0,label='STABIL',hint='Keine unmittelbar gefährdete Ausfallschwelle.';
+ if(avg<68 || bottleneck.value<48 || weakest.value<42 || s.fires>25 || s.flood>25){level=1;label='ANGESPANNT';hint='Reservespielraum sinkt; besonders schwache Systeme priorisieren.';}
+ if(avg<51 || bottleneck.value<33 || weakest.value<30 || low24.length>=2 || s.fires>42 || s.flood>45){level=2;label='ERNST';hint='Mehrere Reserven drohen vor Ende der Krise zu knapp zu werden.';}
+ if(avg<43 || weakest.value<24 || low24.length>=3 || s.fires>68 || s.criticalDays>0){level=3;label='AKUTE KRISE';hint='Unmittelbare Ausfallgefahr. Bei drei Systemen unter 24 % droht nach zwei Tagen der Kollaps.';}
+ if(level===3 && weakest.value>=24 && low24.length<3)hint='Die aktuelle Durchschnittsreserve liegt unter dem Zielwert für Tag 18. Gegensteuern oder Verlieren.';
+ if(s.over&&s.outcome==='loss'){level=4;label='SYSTEMAUSFALL';hint=s.endedReason;}
+ const onCourse=avg>=47.5 && minimum[0].value>=31 && s.metrics.logistics>=31 && s.fires<40 && s.flood<38;
+ const nearest=METRICS.find(m=>m.id===weakest.id);
+ const gap=Math.max(0,round(weakest.value-14));
+ return {level,label,hint,weakest:nearest?.label||weakest.id,weakestValue:weakest.value,margin:gap,bottleneck:bottleneck.label,bottleneckValue:bottleneck.value,
+   criticalCount:low24.length,criticalDays:s.criticalDays,weakIds:dangerouslyLow.map(x=>x.id),
+   avg:round(avg),goalAvg:47.5,goalVital:31,onCourse,
+   statement:`${nearest?.label||weakest.id}: ${Math.round(weakest.value)} %, noch ${fmtMargin(gap)} Prozentpunkte bis zur unmittelbaren Ausfallschwelle (14 %).`};
+}
+function fmtMargin(x){return Number.isInteger(x)?String(x):x.toFixed(1).replace('.',',');}
