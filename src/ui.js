@@ -1,176 +1,155 @@
 import { pfusch, html } from 'https://matthiaskainer.github.io/pfusch/pfusch.min.js';
-import { DAYS, MAX_ACTIONS, METRICS, ACTIONS, createGame, finance, available, takeAction, chooseEvent, advance, grade } from './engine.js';
+import { DAYS, MAX_ACTIONS, METRICS, ACTIONS, createGame, finance, available, takeAction, chooseEvent, advance, grade, routeCondition } from './engine.js';
+import { STATES, CITIES, CITY_BY_NAME, ROUTES, NODES, ROUTE_INCIDENT_CENTERS } from './geography.js';
 
 let game=createGame();
-const fmt=n=>Math.round(n).toLocaleString('de-DE');
-const funds=n=>`${Number(n).toLocaleString('de-DE',{maximumFractionDigits:1})} KM`;
-const pct=n=>`${fmt(n)} %`;
-const tone=n=>n<31?'danger':n<54?'warn':'ok';
-const sign=n=>n>0?`+${fmt(n)}`:fmt(n);
-const metric=id=>METRICS.find(m=>m.id===id);
-const iconText={wasser:'W',infrastruktur:'I',gesellschaft:'G',versorgung:'V',feuerwehr:'F',finanzen:'€'};
-const TOP=['water','power','health','fire','trust'];
-const TABS=[['alle','Alle Bereiche'],['wasser','Wasser'],['infrastruktur','Infrastruktur'],['gesellschaft','Menschen'],['feuerwehr','Feuerwehr'],['versorgung','Versorgung'],['finanzen','Finanzen']];
-const regionList=[
-  {name:'NORD',x:80,y:63,risk:1,description:'Küste & Kühlwasserversorgung'},
-  {name:'OST',x:169,y:110,risk:4,description:'Landwirtschaft und Waldbrand'},
-  {name:'WEST',x:42,y:145,risk:3,description:'Rhein, Industrie, Schifffahrt'},
-  {name:'MITTE',x:117,y:178,risk:3,description:'Autobahnen & Logistik'},
-  {name:'SÜDWEST',x:65,y:272,risk:5,description:'Waldbrand, Grundwasser, Strom'},
-  {name:'SÜD',x:162,y:275,risk:4,description:'Städtehitze & Kliniken'}
-];
-
-function tinyChart(id) {
- const values=game.history.slice(-12).map(h=>h[id]), w=190,h=36;
- const points=values.map((v,i)=>`${(i/(Math.max(values.length-1,1))*w).toFixed(1)},${(h-(v/100*h)).toFixed(1)}`).join(' ');
- const color=game.metrics[id]<31?'#fb6e76':game.metrics[id]<54?'#efba72':'#6de1c6';
- return html.svg({viewBox:`0 0 ${w} ${h}`,class:'spark','aria-hidden':'true'},
-  html.line({x1:0,y1:h*.5,x2:w,y2:h*.5,stroke:'#213643','stroke-dasharray':'4 4'}),
-  html.polyline({points,fill:'none',stroke:color,'stroke-width':2.5,'stroke-linecap':'round','stroke-linejoin':'round'}));
+const fmt=n=>Number(n).toLocaleString('de-DE',{maximumFractionDigits:1});
+const money=n=>`${fmt(n)} Mrd. €`;
+const unit=n=>`${Math.round(n)} %`;
+const tone=n=>n<34?'danger':n<57?'warn':'ok';
+const metric=id=>METRICS.find(x=>x.id===id);
+const TABS=[['alle','Alle'],['wasser','Wasser'],['infrastruktur','Netze'],['feuerwehr','Feuerwehr'],['gesellschaft','Menschen'],['versorgung','Nahrung'],['finanzen','Finanzen']];
+const LAYERS=[['alle','Gesamt'],['verkehr','Verkehr'],['versorgung','Versorgung'],['einsatz','Feuerwehr / KatS']];
+const STATE_RISK={'DE-BW':4,'DE-BY':3,'DE-BE':3,'DE-BB':5,'DE-HB':2,'DE-HH':2,'DE-HE':3,'DE-MV':3,'DE-NI':3,'DE-NW':4,'DE-RP':4,'DE-SL':4,'DE-ST':4,'DE-SN':4,'DE-SH':2,'DE-TH':4};
+const arrow=n=>n>0?`+${fmt(n)}`:fmt(n);
+const ROUTE_LABELS={A1:[144,208],A2:[302,244],A3:[257,397],A5:[155,477],A7:[216,327],A8:[266,524],A9:[337,378],A24:[319,163],RHEIN:[112,420]};
+const roadStroke=t=>t==='danger'?'#ff6974':t==='warn'?'#f5bb74':'#58d7bd';
+const forecast=()=>{const f=finance(game);return `${f.net>=0?'+':''}${money(f.net)} netto / Tag`};
+const currentSelection=sel=>{
+ if(!sel)return {label:'LAGEKARTE',name:'Deutschland',description:'Korridore, Städte und Versorgungspunkte anklicken. Leitungs- und Einsatznetz sind strategisch vereinfacht.',status:'SIMULATION'};
+ if(sel.kind==='route') { const r=ROUTES.find(x=>x.id===sel.id);if(!r)return currentSelection(null);const c=routeCondition(game,r.id);return {label:'VERKEHRSKORRIDOR',name:`${r.id} · ${r.name}`,description:`${r.notes}. Modellierte Verfügbarkeit: ${unit(c.score)}.${c.incident?` Störung: ${c.incident} (${c.days} Tag(e)).`:''}`,status:c.status.toUpperCase(),tone:c.tone}; }
+ if(sel.kind==='node'){const n=NODES.find(x=>x.id===sel.id);if(!n)return currentSelection(null);const m=metric(n.metric);return {label:'VERSORGUNGS- / EINSATZPUNKT',name:n.name,description:`${m.detail} Bundesweite Reserve: ${unit(game.metrics[n.metric])}. Standort symbolisiert eine Region, keine einzelne echte Anlage.`,status:tone(game.metrics[n.metric])==='danger'?'KRITISCH':tone(game.metrics[n.metric])==='warn'?'ANGESPANNT':'STABIL',tone:tone(game.metrics[n.metric])};}
+ if(sel.kind==='state'){const land=STATES.find(x=>x.id===sel.id);const risk=STATE_RISK[sel.id]||3;return {label:'BUNDESLAND · RISIKOPROFIL',name:land?.name||sel.id,description:`Illustrative Belastungsstufe ${risk}/5. Die farbige Fläche ist eine Modellannahme und kein aktueller Gefahrenbericht.`,status:risk>=5?'ERHÖHTE ANFÄLLIGKEIT':'REGION IM MODELL',tone:risk>=5?'warn':'ok'};}
+ if(sel.kind==='city'){const n=CITY_BY_NAME[sel.id];return {label:'STADT / KNOTENPUNKT',name:n?.name||sel.id,description:'Geografisch verorteter Orientierungspunkt. Störungen sind Spielsimulationen, keine Echtzeitmeldungen.',status:'LAGEPUNKT'};}
+ return currentSelection(null);
+};
+function position(cityName){const c=CITY_BY_NAME[cityName];return c?`${c.x},${c.y}`:'';}
+function cityXY(name){return CITY_BY_NAME[name]||{x:260,y:290};}
+function routePath(r){return r.cities.map((c,i)=>`${i?'L':'M'}${position(c)}`).join('');}
+function routeIcon(r){let center=ROUTE_INCIDENT_CENTERS[r.id];const p=cityXY(center);return {x:p.x,y:p.y};}
+function pill(id){const m=metric(id),v=game.metrics[id];return html.div({class:`res res-${tone(v)}`,title:m.detail},
+ html.div({class:'res-head'},html.span(m.label),html.strong(unit(v))),
+ html.div({class:'mini-track'},html.i({style:`width:${v}%`})));
 }
-function valueCard(id) {
- const m=metric(id),v=game.metrics[id],prev=game.history.at(-2)?.[id] ?? v,delta=v-prev;
- return html.div({class:`kpi kpi-${tone(v)}`},
-  html.div({class:'kpi-head'},html.span({class:'kpi-title'},m.label),html.span({class:'level'},tone(v)==='danger'?'KRITISCH':tone(v)==='warn'?'ANGESPANNT':'STABIL')),
-  html.div({class:'kpi-main'},html.strong(pct(v)),html.span({class:`delta ${delta<0?'fall':'rise'}`},`${sign(delta)} seit gestern`)),
-  tinyChart(id),
-  html.div({class:'track'},html.div({class:`fill ${tone(v)}`,style:`width:${v.toFixed(1)}%`})),
-  html.small(m.unit));
-}
-function systemRow(id) {
- const m=metric(id),v=game.metrics[id];
- return html.div({class:'system-row',title:m.detail},
-   html.div({class:'system-top'},html.span({class:'system-name'},html.span({class:'sys-glyph'},m.icon),m.label),html.strong(pct(v))),
-   html.div({class:'track'},html.div({class:`fill ${tone(v)}`,style:`width:${v.toFixed(1)}%`})),
-   html.small(m.detail));
-}
-function actionCard(a, update) {
-  const reason=available(game,a), used=!!reason;
-  const costs=a.funds?`+${funds(a.funds)}`:`−${funds(a.cost)}`;
-  const maintenance=a.upkeep?` + ${funds(a.upkeep)}/Tag (${a.upkeepDays} Tage)`:'';
-  return html.button({class:`action ${used?'inactive':''}`,type:'button',disabled:!!reason,click:()=>{if(takeAction(game,a.id))update();}, title:reason||a.desc},
-    html.div({class:'action-heading'},html.span({class:'action-sigil'},iconText[a.group]),html.strong(a.name),html.span({class:'action-cost'},costs)),
-    html.p(a.desc),html.small({class:'upkeep-note'},maintenance),
-    html.div({class:'action-foot'},html.span(a.impact),html.span({class:'action-ready'},reason||'EINSETZEN')));
-}
-function heatMap() {
- const heat=Math.max(0,game.temp-38)/8;
- const colors=['#57949b','#dcad68','#ec8d51','#eb7149','#d84c42','#a83242'];
- const heatTone=(risk)=>colors[Math.min(5,Math.max(0,Math.round(risk + heat*1.4 -1)))];
- return html.svg({viewBox:'0 0 270 350',class:'germany-map',role:'img','aria-label':'Schematische Lagekarte Deutschland mit sechs Hitzeregionen'},
-    html.defs(html.pattern({id:'map-grid',width:18,height:18,patternUnits:'userSpaceOnUse'},html.path({d:'M 18 0 L 0 0 0 18',fill:'none',stroke:'#1c3541','stroke-width':'.6'}))),
-    html.rect({x:0,y:0,width:270,height:350,fill:'url(#map-grid)'}),
-    html.path({d:'M120 22 L138 19 144 35 162 29 171 42 188 42 181 57 196 67 186 91 203 102 195 120 220 131 204 153 224 172 211 190 217 208 198 224 209 243 199 260 215 281 197 296 205 312 184 322 160 314 139 333 117 326 98 338 79 323 58 325 50 302 36 288 46 264 36 248 45 228 32 209 49 187 38 163 57 145 52 124 62 106 57 82 75 70 78 52 102 50 107 28 Z',fill:'#20313a',stroke:'#708d93','stroke-width':2,'stroke-linejoin':'round'}),
-    ...[
-     {d:'M83 47 L118 40 146 45 174 58 173 92 153 110 108 100 77 83 Z',n:0},
-     {d:'M174 58 L195 89 191 118 218 141 202 171 165 167 153 110 173 92 Z',n:1},
-     {d:'M77 83 L108 100 110 157 83 202 45 192 42 164 57 145 52 124 62 106 Z',n:2},
-     {d:'M108 100 L153 110 165 167 189 198 156 234 110 213 83 202 110 157 Z',n:3},
-     {d:'M83 202 L110 213 114 259 131 297 99 333 78 319 54 320 47 293 35 281 45 254 35 245 45 228 Z',n:4},
-     {d:'M110 213 L156 234 189 198 209 246 199 262 214 283 198 297 203 310 181 320 157 312 138 330 131 297 114 259 Z',n:5},
-    ].map(p=>html.path({d:p.d,fill:heatTone(regionList[p.n].risk),'fill-opacity':'.91',stroke:'#263a41','stroke-width':1.8,'stroke-linejoin':'round'})),
-    ...regionList.map(r=>html.g(
-      html.circle({cx:r.x+9,cy:r.y,r:12,fill:'#0a1a23','fill-opacity':'.78',stroke:'#c6d3cc','stroke-width':.7}),
-      html.circle({cx:r.x+9,cy:r.y,r:3.2,fill:'#f6e2ba'}),
-      html.text({x:r.x+9,y:r.y+25,'text-anchor':'middle',fill:'#f2eee3','font-size':9,'font-weight':700,'letter-spacing':1},r.name)
-    ))
+function markNode(n,select,show){const c=cityXY(n.city),v=game.metrics[n.metric];if(!show)return null;return html.g({class:`net-node net-${tone(v)}`,role:'button',tabindex:'0','aria-label':`${n.name}, ${unit(v)}`,click:()=>select('node',n.id),keydown:e=>{if(e.key==='Enter')select('node',n.id);}},
+ html.circle({cx:c.x,cy:c.y,r:13,class:'node-halo'}),
+ html.circle({cx:c.x,cy:c.y,r:8,class:'node-core'}),
+ html.text({x:c.x,y:c.y+3.5,'text-anchor':'middle','font-size':10,'font-weight':900,fill:'#0a1b26'},n.symbol),
+ html.title(`${n.name}: ${unit(v)}`));}
+function markCity(c,select,show){return show?html.g({class:`city-point ${c.important?'major':''}`,role:'button',tabindex:'0','aria-label':c.name,click:()=>select('city',c.name),keydown:e=>{if(e.key==='Enter')select('city',c.name);}},
+ html.circle({cx:c.x,cy:c.y,r:c.important?2.7:1.3}),
+ c.important?html.text({x:c.x+6,y:c.y-5,'font-size':9.5,'font-weight':700},c.name):null,
+ html.title(c.name)):null;}
+function drawRoute(r,select,show){if(!show)return null;const c=routeCondition(game,r.id),p=routePath(r),color=roadStroke(c.tone),isRiver=r.kind==='river';const a=routeIcon(r);return html.g({class:`route route-${c.tone} ${isRiver?'river-route':''}`,role:'button',tabindex:'0','aria-label':`${r.id} ${r.name}: ${c.status}`,click:()=>select('route',r.id),keydown:e=>{if(e.key==='Enter')select('route',r.id);}},
+ html.path({d:p,stroke:'#06121d','stroke-width':isRiver?7:6,fill:'none','stroke-linecap':'round','stroke-linejoin':'round'}),
+ html.path({d:p,stroke:color,'stroke-width':isRiver?3.8:2.8,fill:'none','stroke-linecap':'round','stroke-linejoin':'round','stroke-dasharray':isRiver?'2 5':undefined}),
+ !isRiver?html.path({d:p,stroke:'#e9fff4','stroke-opacity':.36,'stroke-width':1.3,fill:'none',class:'route-flow','stroke-linecap':'round','stroke-dasharray':'2 12'}):null,
+ c.tone!=='ok'&&['A3','A5','A7','A2','A8','A9'].includes(r.id)?html.g({class:'route-alert'},html.circle({cx:a.x,cy:a.y,r:6,fill:color,stroke:'#0a1b26','stroke-width':2}),html.text({x:a.x,y:a.y+2.7,'text-anchor':'middle',fill:'#061824','font-size':8,'font-weight':800},'!')):null,
+ html.path({d:p,stroke:'transparent','stroke-width':12,fill:'none','pointer-events':'stroke',class:'route-hit'}),
+ ROUTE_LABELS[r.id]?html.g({class:'route-tag'},html.rect({x:ROUTE_LABELS[r.id][0]-13,y:ROUTE_LABELS[r.id][1]-10,width:r.id==='RHEIN'?36:26,height:17,rx:2,fill:'#0b2029',stroke:color,'stroke-width':.9}),html.text({x:ROUTE_LABELS[r.id][0],y:ROUTE_LABELS[r.id][1]+1,'text-anchor':'middle','font-size':r.id==='RHEIN'?7:9,'font-weight':800,fill:'#e1f2e9'},r.id)):null,
+ html.title(`${r.id}: ${c.status} (${unit(c.score)})${c.incident?' · '+c.incident:''}`));}
+function mapView(state){
+ const showRoad=state.layer==='alle'||state.layer==='verkehr';
+ const showNodes=state.layer==='alle'||state.layer==='versorgung'||state.layer==='einsatz';
+ const showCities=state.layer==='alle'||state.layer==='verkehr';
+ const showFire=state.layer==='alle'||state.layer==='einsatz';
+ const select=(kind,id)=>{state.inspect={kind,id};};
+ const stormCenter=cityXY(game.stormZone);
+ const highlighted=state.inspect?.kind==='route'?state.inspect.id:null;
+ const countries=STATES.map((s,i)=>html.path({class:'state-area',d:s.d,fill:game.storm>18&&(['DE-HE','DE-ST','DE-NW','DE-BY'].includes(s.id))?'#244653':`hsl(${196-(STATE_RISK[s.id]||3)*3} 24% ${19+(i%4)*1.4}%)`,'data-state':s.id,role:'button',tabindex:'0',click:()=>select('state',s.id),keydown:e=>{if(e.key==='Enter')select('state',s.id);}},html.title(s.name)));
+ return html.div({class:'map-stage'},
+ html.svg({viewBox:'0 0 490 620',class:`germany-map layer-${state.layer}`,role:'img','aria-label':'Geografisch verortete Deutschlandkarte mit Bundesländern, Autobahnen, Rhein, Städten und Krisenstandorten'},
+   html.defs(
+    html.pattern({id:'gridlines',width:24,height:24,patternUnits:'userSpaceOnUse'},html.path({d:'M24 0H0V24',stroke:'#233947','stroke-width':.45,fill:'none'})),
+    html.radialGradient({id:'storm-glow'},html.stop({offset:'0%','stop-color':'#65a9df','stop-opacity':.40}),html.stop({offset:'100%','stop-color':'#65a9df','stop-opacity':0}))
+   ),
+   html.rect({x:0,y:0,width:490,height:620,fill:'url(#gridlines)'}),
+   ...countries,
+   game.storm>8?html.g({class:'radar-storm'},html.circle({cx:stormCenter.x,cy:stormCenter.y,r:50,fill:'url(#storm-glow)'}),html.circle({cx:stormCenter.x,cy:stormCenter.y,r:24,fill:'none',stroke:'#9dcaff','stroke-width':1.2,'stroke-dasharray':'3 7',class:'radar-ring'}),html.circle({cx:stormCenter.x,cy:stormCenter.y,r:7,fill:'#9dccfd','fill-opacity':.9}),html.text({x:stormCenter.x+16,y:stormCenter.y+22,class:'storm-label'},`STARKREGEN ${Math.round(game.storm)} %`)):null,
+   ...ROUTES.map(r=>drawRoute(r,select,showRoad)),
+   ...CITIES.map(c=>markCity(c,select,showCities)),
+   ...NODES.filter(n=>state.layer!=='einsatz'||n.metric==='fire').map(n=>markNode(n,select,showNodes)),
+   showFire&&game.fires>4?html.g({class:'wildfire-point'},html.circle({cx:405,cy:253,r:8+game.fires*.30,fill:'#ea704e','fill-opacity':.09,class:'fire-pulse'}),html.circle({cx:405,cy:253,r:6.5,fill:'#ff8b57'}),html.text({x:416,y:248,class:'fire-label'},'BRAND')):null,
+   showFire&&game.fires>15?html.circle({cx:170,cy:530,r:6,fill:'#f7a05e',class:'fire-pulse'}):null,
+   html.text({x:16,y:26,class:'map-coord'},'DEUTSCHLAND // 16 LÄNDER'),
+   html.text({x:16,y:603,class:'map-coord'},'KORRIDORE GEOGRAFISCH VEREINFACHT · MODELLWERTE')
+ ),
+ html.div({class:'map-key'},html.span(html.i({class:'key-dot green'}),'frei'),html.span(html.i({class:'key-dot amber'}),'eng'),html.span(html.i({class:'key-dot red'}),'kritisch')),
+ html.div({class:'map-selection'},
+  html.span({class:'map-selection-label'},currentSelection(state.inspect).label),
+  html.strong(currentSelection(state.inspect).name),
+  html.p(currentSelection(state.inspect).description),
+  html.span({class:`selection-status ${currentSelection(state.inspect).tone||'ok'}`},currentSelection(state.inspect).status)
+ ),
+ highlighted?html.span({class:'selected-route-label'},`AKTIV: ${highlighted}`):null
  );
 }
+function actionRow(a,refresh){const reason=available(game,a),can=!reason;const color=a.funds?'gain':'cost';return html.button({class:`action-row ${can?'':'locked'}`,type:'button',disabled:!can,click:()=>{if(takeAction(game,a.id))refresh();},title:reason||a.desc},
+ html.span({class:'action-left'},html.strong(a.name),html.small(a.desc)),
+ html.span({class:'action-right'},html.strong({class:color},a.funds?`+${money(a.funds)}`:money(a.cost)),html.small(reason||a.impact)),
+ );}
+function eventOverlay(e,refresh){return html.div({class:'modal-backdrop'},html.div({class:'event-modal',role:'dialog','aria-modal':'true','aria-label':e.title},
+ html.div({class:'incident-line'},html.span({class:'blink'}),'EILMELDUNG',html.span(e.category)),
+ html.h2(e.title),html.p(e.text),
+ html.div({class:'event-choices'},...e.choices.map((c,i)=>html.button({class:'choice',type:'button',disabled:game.budget<c.cost,click:()=>{if(chooseEvent(game,i))refresh();}},
+  html.div({class:'choice-title'},html.strong(c.name),html.span(c.cost?money(c.cost):'0 €')),
+  html.p(c.text),html.small([...Object.entries(c.effect||{}).map(([k,v])=>`${metric(k).label}: ${arrow(v)}`),...(c.flood?[`Überflutung ${arrow(c.flood)}`]:[]),...(c.fires?[`Brandfront ${arrow(c.fires)}`]:[])].join(' · '))))),
+ html.small('Sofortentscheidung: Sie kostet keinen regulären Beschluss, verbraucht aber das verfügbare Budget.')));}
+function gameOverlay(refresh){const g=grade(game);return html.div({class:'modal-backdrop'},html.div({class:'result-modal',role:'dialog','aria-modal':'true'},
+ html.div({class:'eyebrow'},game.outcome==='win'?'LAGE STABILISIERT':'KRISENMANAGEMENT GESCHEITERT'),
+ html.h2(game.outcome==='win'?'Deutschland hält durch.':'Die Krise überfordert das System.'),html.p(game.endedReason),
+ html.div({class:'score'},html.strong(`${g.score}/100`),html.span(`${g.rank} · Ø ${g.avg} % Versorgung`)),
+ html.p(`Nach ${game.day} Tagen, ${game.actionCount} Beschlüssen und ${money(game.debt)} Notkredit. Restbudget: ${money(game.budget)}.`),
+ html.div({class:'buttons'},html.button({class:'primary',click:()=>{game=createGame(game.seed+1);refresh();}},'Neue Krise spielen'),html.button({class:'outline',click:()=>{game=createGame(game.seed);refresh();}},'Dieselbe Krise erneut')),html.small('Fiktives Planspiel, keine amtliche Lagebeurteilung.')));}
+function helpOverlay(state){return html.div({class:'modal-backdrop'},html.div({class:'help-modal',role:'dialog','aria-modal':'true'},
+ html.div({class:'eyebrow'},'SO FUNKTIONIERT ES'),html.h2('18 Tage. Begrenzte Eingriffe.'),
+ html.p('Du kontrollierst die Krisenlage anhand geografisch verorteter Korridore, symbolischer Standorte und bundesweiter Versorgungsscores. Klicke Routen oder Netzknoten, um ihren Zustand zu prüfen.'),
+ html.p('Die Simulationskasse beginnt bei 24 Mrd. €, nimmt täglich 5 Mrd. € ein, verliert aber Unterhalts- und Zinszahlungen. Diese Größenordnungen sind bewusst abstrahiert und keine realen Bundeshaushaltsdaten.'),
+ html.p('Zwei Beschlüsse maximal pro Tag. Nichts tun ist erlaubt und oft richtig. Starkregen kann bei Dürre Sturzfluten auslösen: weniger Waldbrandgefahr, dafür überflutete Straßen, belastete Trinkwasserwerke und Katastrophenschutz.'),
+ html.p('Autobahnlinien sind vereinfachte Korridore über echte Städte. Verkehrsfarben und Gefahrenlagen stammen allein aus dem Spielmodell, nicht aus Live-Daten.'),
+ html.button({class:'primary',click:()=>{state.help=false;}},'Zurück zum Krisenstab')));}
+function topStat(label,value,detail,extra=''){return html.div({class:`top-stat ${extra}`},html.span(label),html.strong(value),detail?html.small(detail):null);}
+function systemCard(){return html.div({class:'situation-rail'},
+ html.div({class:'rail-title'},html.span('NETZ- & EINSATZSTATUS'),html.span('MODELL')), ...METRICS.map(m=>pill(m.id)),
+ html.div({class:'risk-summary'},
+ html.div(html.span('BRANDFRONT'),html.strong(`${Math.round(game.fires)}/100`)),
+ html.div(html.span('ÜBERFLUTUNG'),html.strong(`${Math.round(game.flood)}/100`))));}
+function dispatchLog(s){return html.div({class:`alert-row log-${s.kind}`},html.span(`T${s.day}`),html.div(html.strong(s.title),html.small(s.body)));}
 
-function firePanel(){
- const risk=Math.round(game.fireRisk),front=Math.round(game.fires),crew=Math.round(game.metrics.fire);
- return html.section({class:'panel fire-panel'},
-  html.div({class:'panel-head'},html.div(html.div({class:'eyebrow'},'02 / FEUERWEHR & KATS'),html.h2('Waldbrandlage')),html.span({class:`chip ${front>25?'fire-alert':''}`},front>25?'GROSSLAGE':'EINSATZBEREIT')),
-  html.div({class:'fire-body'},
-   html.div({class:'fire-headline'},html.div(html.span('AKTIVE BRANDLAST'),html.strong(`${front} / 100`)),html.div(html.span('WALDBRANDGEFAHR'),html.strong(`${risk} / 100`))),
-   html.div({class:'fire-track'},html.div({style:`width:${front}%`,'class':'fire-fill'})),
-   html.div({class:'fire-track muted'},html.div({style:`width:${risk}%`,'class':'risk-fill'})),
-   html.p(`Feuerwehr- und KatS-Reserve: ${crew} %. Löscheinsätze brauchen Trinkwasser und erschöpfen Kräfte. Bei Ruhe erholen sie sich.`),
-  )
- );
-}
-function logRow(entry) {
- return html.div({class:`log-item log-${entry.kind}`},
-  html.div({class:'log-date'},`TAG ${String(entry.day).padStart(2,'0')}`),
-  html.div({class:'log-text'},html.strong(entry.title),html.p(entry.body)));
-}
-function eventPanel(e,update){
- return html.div({class:'modal-backdrop'},html.div({class:'event-modal',role:'dialog','aria-modal':'true','aria-label':e.title},
-    html.div({class:'eyebrow event-alert'},'● EILMELDUNG  /  ',e.category),
-    html.h2(e.title),html.p({class:'event-description'},e.text),
-    html.div({class:'event-choices'},...e.choices.map((c,i)=>html.button({class:'choice',type:'button',disabled:game.budget<c.cost,click:()=>{if(chooseEvent(game,i))update();}},
-      html.span({class:'choice-title'},html.strong(c.name),html.span(c.cost?`−${funds(c.cost)}`:'Ohne Fondsabfluss')),
-      html.span(c.text),html.small([...Object.entries(c.effect).map(([k,v])=>`${metric(k).label} ${v>0?'+':''}${v}`),...(c.fires?[`Brandfront ${c.fires>0?'+':''}${c.fires}`]:[])].join(' · '))))),
-    html.small({class:'event-footnote'},'Diese Entscheidung verbraucht keinen Maßnahmen-Slot. Die Lage entwickelt sich danach weiter.')
-  ));
-}
-function overlay(update){
- const g=grade(game);
- return html.div({class:'modal-backdrop'},html.div({class:'result-modal',role:'dialog','aria-modal':'true'},
-  html.div({class:'eyebrow'},game.outcome==='win'?'LAGE STABILISIERT':'KRISENMANAGEMENT GESCHEITERT'),
-  html.h2(game.outcome==='win'?'Deutschland hält durch.':'Die Krise überfordert das System.'),
-  html.p(game.endedReason),
-  html.div({class:'result-score'},html.strong(`${g.score}/100`),html.span(`${g.rank} · Ø ${g.avg} % Versorgung`)),
-  html.p({class:'result-summary'},`Nach ${game.day} Tagen, ${game.actionCount} Maßnahmen und ${game.debt} KM Notkredit. Verbleibender Fonds: ${funds(game.budget)}.`),
-  html.div({class:'buttons'},html.button({click:()=>{game=createGame(game.seed+1);update();},class:'primary'},'Neue Lage spielen'),html.button({click:()=>{game=createGame(game.seed);update();},class:'outline'},'Gleiche Lage erneut')),
-  html.small('Modellwerte und Ereignisse sind fiktiv. Keine reale Katastrophenprognose.')
-  ));
-}
-
-pfusch('crisis-game',{version:0,tab:'alle',help:false},state=>{
- const update=()=>{state.version++;};
- const readiness=game.pending?'LAGEENTSCHEIDUNG OFFEN':game.over?'ABSCHLUSS':game.ops===0?'HEUTE KEINE BESCHLÜSSE MEHR':game.budget<7?'RESERVEN SCHONEN ODER PRIORISIEREN':'KRISENSTAB HANDLUNGSFÄHIG';
- const average=Object.values(game.metrics).reduce((a,b)=>a+b,0)/METRICS.length;
+pfusch('crisis-game',{version:0,tab:'alle',layer:'alle',inspect:null,help:false},state=>{
+ const refresh=()=>{state.version++;};
  const cash=finance(game);
+ const selected=currentSelection(state.inspect);
+ const options=ACTIONS.filter(a=>state.tab==='alle'||a.group===state.tab);
  return [
   html.div({class:'app'},
    html.header({class:'topbar'},
-    html.div({class:'brand'},html.span({class:'brand-mark'},'D/26'),html.div(html.strong('DÜRREKRISE'),html.small('KRISENSTAB DEUTSCHLAND'))),
-    html.div({class:'top-status'},html.span({class:'led'}),readiness),
-    html.div({class:'top-actions'},html.button({class:'text-button',click:()=>{state.help=!state.help;}},'SPIELREGELN'),html.button({class:'text-button',click:()=>{game=createGame(game.seed+1);update();}},'NEUSTART'))),
-   html.section({class:'intro'},
-    html.div(html.div({class:'eyebrow'},'LÜKEX-INSPIRIERT / SIMULATION / NICHT AMTLICH'),html.h1('18 Tage am Limit.'),html.p('Nach fünf Dürrejahren trifft eine extreme Hitzewelle auf Deutschlands kritische Infrastruktur. Jede Entscheidung zählt.')),
-    html.div({class:'day-count'},html.span('LAGE · TAG'),html.strong(`${String(game.day).padStart(2,'0')} / ${DAYS}`),html.div({class:'days-progress'},html.span({style:`width:${100*game.day/DAYS}%`})) )),
-   html.section({class:'ticker'},
-    html.div(html.span({class:'ticker-label'},'TAGESMAXIMUM'),html.strong(`${game.temp.toFixed(1).replace('.',',')} °C`),html.small('Extremhitze')),
-    html.div(html.span({class:'ticker-label'},'EINSATZBUDGET'),html.strong(funds(game.budget)),html.small(`Morgen ${cash.net>=0?'+':''}${funds(cash.net)} netto`)),
-    html.div(html.span({class:'ticker-label'},'BESCHLÜSSE HEUTE'),html.strong(`${game.actionsToday} / ${MAX_ACTIONS}`),html.small(`${game.ops} heute noch frei`)),
-    html.div(html.span({class:'ticker-label'},'AKTIVE BRANDFRONT'),html.strong(pct(game.fires)),html.small(`Brandgefahr ${pct(game.fireRisk)}`))),
-   html.section({class:'kpi-grid'},...TOP.map(valueCard)),
-   html.div({class:'main-grid'},
-    html.div({class:'left-stack'},
-     html.section({class:'panel map-panel'},
-      html.div({class:'panel-head'},html.div(html.div({class:'eyebrow'},'01 / LAGEBILD'),html.h2('Deutschland unter Hitze')),html.span({class:'chip'},'SCHEMATISCH')),
-      html.div({class:'map-layout'},html.div({class:'map-holder'},heatMap()),html.div({class:'map-insights'},
-        html.strong('Regionale Gefährdung'),html.p('Die Karte visualisiert Hotspots, keine echten Messstationen oder Ländergrenzen.'),
-        ...regionList.map(r=>html.div({class:'region-row'},html.span({class:`region-dot level-${r.risk}`}),html.div(html.strong(r.name),html.small(r.description)))))),
-      html.div({class:'panel-bottom'},html.span('GERINGERE BELASTUNG'),html.div({class:'heat-scale'},...['#57949b','#dcad68','#ec8d51','#eb7149','#d84c42','#a83242'].map(c=>html.i({style:`background:${c}`}))),html.span('AKUTE HITZE'))),
-     firePanel(),
-     html.section({class:'panel systems-panel'},
-      html.div({class:'panel-head'},html.div(html.div({class:'eyebrow'},'03 / KRITIS'),html.h2('Versorgungsnetze')),html.span({class:'chip'},'LIVE · MODELL')),
-      html.div({class:'systems-grid'},...['river','roads','logistics','food'].map(systemRow)))
-    ),
-    html.div({class:'right-stack'},
-     html.section({class:'panel decision-panel'},
-      html.div({class:'panel-head'},html.div(html.div({class:'eyebrow'},'04 / KRISENMANAGEMENT'),html.h2('Maßnahmen anordnen')),html.span({class:'ops-badge'},`${game.actionsToday}/${MAX_ACTIONS} BESCHLOSSEN`)),
-      html.p({class:'decision-copy'},'Höchstens zwei Beschlüsse pro Tag, aber nur 24 KM am Start. Große Eingriffe verursachen Folgekosten. Nicht handeln kann die richtige Entscheidung sein.'),
-      html.div({class:'tab-bar'},...TABS.map(([id,label])=>html.button({class:`tab ${state.tab===id?'selected':''}`,type:'button',click:()=>{state.tab=id;}},label))),
-      html.div({class:'action-list'},...ACTIONS.filter(a=>state.tab==='alle'||a.group===state.tab).map(a=>actionCard(a,update))),
-      html.div({class:'advance-wrap'},html.div(html.strong('Tag beenden und Reserven sichern'),html.small(`Fonds morgen: +${funds(cash.income)} Zufluss −${funds(cash.upkeep)} Unterhalt −${funds(cash.debtService)} Zinsen = ${cash.net>=0?'+':''}${funds(cash.net)}. Die Hitze geht weiter.`)),
-       html.button({class:'primary advance',type:'button',disabled:game.over||!!game.pending,click:()=>{if(advance(game))update();}},`WEITER ZU TAG ${Math.min(game.day+1,DAYS)}  →`))),
-     html.section({class:'panel log-panel'},
-       html.div({class:'panel-head'},html.div(html.div({class:'eyebrow'},'05 / LAGEPROTOKOLL'),html.h2('Meldungen')),html.span({class:'chip'},`${game.log.length} EINTRÄGE`)),
-       html.div({class:'log-list'},...game.log.slice(0,7).map(logRow))))),
-   html.footer({class:'footer'},html.span('DÜRREKRISE ’26 · EIN FIKTIVES SYSTEMRISIKO-SPIEL'),
-     html.span('Inspiriert von der ',html.a({href:'https://www.tagesschau.de/inland/gesellschaft/hitze-duerre-ausnahmezustand-krisenmanagement-100.html',target:'_blank',rel:'noopener noreferrer'},'LÜKEX-Berichterstattung'),' · ',html.a({href:'https://github.com/MatthiasKainer/pfusch',target:'_blank',rel:'noopener noreferrer'},'gebaut mit pfusch')))
+    html.div({class:'brand'},html.span({class:'brand-mark'},'D/26'),html.div(html.strong('DÜRREKRISE'),html.small('KRISENSTAB · DEUTSCHLAND'))),
+    html.div({class:'top-stats'},
+     topStat('TAG',`${game.day} / ${DAYS}`,null,'day-stat'),
+     topStat('TAGESMAX.',`${fmt(game.temp)} °C`,'Hitze'),
+     topStat('VERFÜGBARES BUDGET',money(game.budget),forecast(),'budget-stat'),
+     topStat('BESCHLÜSSE',`${game.actionsToday} / ${MAX_ACTIONS}`,`${game.ops} verfügbar`),
+     topStat('BRAND / STURZFLUT',`${Math.round(game.fires)} / ${Math.round(game.flood)}`,'Index 0–100')),
+    html.div({class:'top-links'},html.button({class:'text-button',click:()=>{state.help=!state.help;}},'REGELN'),html.button({class:'text-button',click:()=>{game=createGame(game.seed+1);state.inspect=null;refresh();}},'NEUSTART'))),
+   html.main({class:'dashboard'},
+    html.section({class:'map-panel panel'},
+     html.div({class:'panel-head'},html.div(html.span({class:'eyebrow'},'STRATEGISCHES LAGEBILD'),html.h1('Deutschland · Infrastruktur')),html.div({class:'layer-tabs'},...LAYERS.map(([id,label])=>html.button({type:'button',class:`layer-tab ${state.layer===id?'selected':''}`,click:()=>{state.layer=id;}},label)))),
+     html.div({class:'map-body'},mapView(state),systemCard()),
+     html.div({class:'map-foot'},html.span('SIMULATION · KEINE ECHTZEITDATEN'),html.span('Bundesländer nach GeoJSON · Korridore schematisch'))),
+    html.section({class:'decision-panel panel'},
+     html.div({class:'panel-head'},html.div(html.span({class:'eyebrow'},'FÜHRUNGSSTAB'),html.h2('Maßnahmen')),html.span({class:'decisions-badge'},`${game.actionsToday}/${MAX_ACTIONS} BESCHLOSSEN`)),
+     html.div({class:'filters'},...TABS.map(([id,label])=>html.button({type:'button',class:`tab ${state.tab===id?'selected':''}`,click:()=>{state.tab=id;}},label))),
+     html.div({class:'action-list'},...options.map(a=>actionRow(a,refresh))),
+     html.div({class:'decision-footer'},
+      html.div(html.strong('Lage fortschreiben'),html.small(`Täglich ${money(cash.income)} Einnahmen · ${money(cash.upkeep+cash.debtService)} laufende Kosten`)),
+      html.button({type:'button',class:'advance primary',disabled:game.over||!!game.pending,click:()=>{if(advance(game))refresh();}},`TAG ${Math.min(DAYS,game.day+1)} →`)),
+     html.div({class:'alerts'},html.div({class:'alerts-label'},html.span('LETZTE MELDUNGEN'),html.span(`${game.log.length} IM PROTOKOLL`)),...game.log.slice(0,2).map(dispatchLog))
+    )),
+   html.footer({class:'footer'},html.span('DÜRREKRISE ’26 · EIN FIKTIVES PLANSPIEL'),html.span('Geometrie: isellsoap/deutschlandGeoJSON · ',html.a({href:'https://github.com/MatthiasKainer/pfusch',target:'_blank',rel:'noopener noreferrer'},'mit pfusch')))
   ),
-  state.help?html.div({class:'modal-backdrop'},html.div({class:'help-modal',role:'dialog','aria-modal':'true'},
-   html.div({class:'eyebrow'},'KURZANLEITUNG'),html.h2('Die Lage ist ernst. Aber nicht aussichtslos.'),
-   html.p('Du steuerst einen Krisenstab für 18 Tage. Du kannst maximal zwei Maßnahmen pro Tag beschließen. Beginne mit 24 Krisenmitteln (KM); pro neuem Tag fließen 5 KM zu, abzüglich Unterhalt und Kreditzinsen.'),
-   html.p('Brandfronten und Einsatzreserve sind getrennt: Brände können wachsen, während Feuerwehr und Katastrophenschutz erschöpfen. Löschen kostet Wasser, Geld und Personal. Entscheidungen erzeugen auch Nebenwirkungen.'),
-   html.p('Kein Aktionismus: Reserven bleiben über Tage bestehen, Kosten laufen nach. Wer heute alles ausgibt, kann morgen nicht mehr auf Notlagen reagieren. KM sind fiktive Spieleinheiten, keine realen Haushaltszahlen.'),
-   html.button({class:'primary',click:()=>{state.help=false;}},'Lage übernehmen'))):null,
-  game.pending && !game.over?eventPanel(game.pending,update):null,
-  game.over?overlay(update):null
+  state.help?helpOverlay(state):null,
+  game.pending&&!game.over?eventOverlay(game.pending,refresh):null,
+  game.over?gameOverlay(refresh):null
  ];
 });

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createGame, finance, ACTIONS, EVENTS, START_BUDGET, DAILY_INCOME, MAX_ACTIONS, available, takeAction, advance, chooseEvent, DAYS, grade} from '../src/engine.js';
+import {createGame, finance, ACTIONS, EVENTS, START_BUDGET, DAILY_INCOME, MAX_ACTIONS, available, takeAction, advance, chooseEvent, DAYS, grade,routeCondition} from '../src/engine.js';
 import {run} from './balance.mjs';
+import {STATES,CITIES,CITY_BY_NAME,ROUTES,NODES} from '../src/geography.js';
 
 test('tight opening budget and exact action counter',()=>{
  const s=createGame(42);
@@ -127,4 +128,37 @@ test('day 18 ends play and final grading is bounded',()=>{
   assert.ok(['win','loss'].includes(s.outcome));
   assert.ok(grade(s).score>=0&&grade(s).score<=100);
  }
+});
+
+test('Starkregen induces flash floods and several route-specific bottlenecks',()=>{
+ const s=createGame(21);
+ for(let day=2;day<=5;day++){
+  if(s.pending)assert.ok(chooseEvent(s,1));
+  assert.ok(advance(s));
+  assert.equal(s.day,day);
+ }
+ assert.equal(s.pending.category,'STARKREGEN');
+ assert.ok(s.flood>=15);
+ assert.ok(s.storm>=75);
+ assert.ok(s.routeIncidents.A3.penalty>=20);
+ assert.ok(routeCondition(s,'A3').score<routeCondition(s,'A9').score);
+ const fireRisk=s.fireRisk, floodBefore=s.flood;
+ assert.ok(chooseEvent(s,1));
+ assert.ok(s.flood<floodBefore,'defensive closures should reduce flood exposure');
+ assert.ok(available(s,ACTIONS.find(a=>a.id==='pumps'))==='','pump measures become available in flooded areas');
+ assert.ok(takeAction(s,'pumps'));
+ assert.ok(s.flood<floodBefore-10);
+ assert.ok(s.metrics.fire<80,'pumping binds emergency personnel');
+ assert.ok(s.fireRisk<=fireRisk+1);
+});
+
+test('German geometry has 16 real federal states, cities, and a real corridor graph',()=>{
+ assert.equal(STATES.length,16);
+ assert.equal(new Set(STATES.map(x=>x.id)).size,16);
+ assert.ok(CITIES.length>=45);
+ assert.equal(ROUTES.length,9);
+ assert.equal(NODES.filter(x=>x.metric==='fire').length,3);
+ for(const state of STATES){assert.match(state.d,/^M\d/);assert.ok(state.d.length>40)}
+ for(const city of CITIES){assert.ok(city.x>=0&&city.x<=490);assert.ok(city.y>=0&&city.y<=620)}
+ for(const road of ROUTES){for(const name of road.cities)assert.ok(CITY_BY_NAME[name],`${road.id} missing ${name}`)}
 });
