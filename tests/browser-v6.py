@@ -30,6 +30,21 @@ async def main():
   page=await browser.new_page(viewport={'width':1366,'height':768})
   errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
   root=await boot(page)
+  # Survival markers are meaningful: seven core sectors require 31%; roads and river do not.
+  rows=root.locator('.situation-rail .res')
+  assert await rows.count()==9
+  assert await root.locator('.mini-track .failure-zone').count()==9
+  assert await root.locator('.mini-track .failure-line').count()==0
+  for i in range(9):
+   targets=rows.nth(i).locator('.mini-track .target-line')
+   if i in (1,3):
+    assert await targets.count()==0, f'Unexpected survival marker in row {i}'
+   else:
+    assert await targets.count()==1, f'Missing survival marker in row {i}'
+    assert (await targets.get_attribute('style'))=='left:31%'
+   bar=await rows.nth(i).locator('.mini-track').bounding_box()
+   zone=await rows.nth(i).locator('.failure-zone').bounding_box()
+   assert bar and zone and abs(zone['width']/bar['width']-.14)<.02,(i,bar,zone)
   selector=root.locator('.difficulty-control select')
   assert await selector.count()==1
   assert await selector.locator('option').count()==4

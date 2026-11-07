@@ -31,9 +31,18 @@ function position(cityName){const c=CITY_BY_NAME[cityName];return c?`${c.x},${c.
 function cityXY(name){return CITY_BY_NAME[name]||{x:260,y:290};}
 function routePath(r){return r.cities.map((c,i)=>`${i?'L':'M'}${position(c)}`).join('');}
 function routeIcon(r){let center=ROUTE_INCIDENT_CENTERS[r.id];const p=cityXY(center);return {x:p.x,y:p.y};}
-function pill(id){const m=metric(id),v=game.metrics[id];return html.div({class:`res res-${tone(v)} ${v<30?'res-urgent':''}`,title:`${m.detail} Unter 14 % bedeutet Systemausfall.`},
- html.div({class:'res-head'},html.span(m.label),html.strong(unit(v))),
- html.div({class:'mini-track'},html.i({style:`width:${v}%`}),html.b({class:'failure-line',title:'Systemausfall unter 14 %'})));
+const CORE_THRESHOLD_IDS=['water','power','health','food','fire','trust','logistics'];
+const INSTANT_FAILURE_IDS=['water','power','health','food','fire','trust'];
+function thresholdFor(id){return CORE_THRESHOLD_IDS.includes(id)?31:null;}
+function pill(id){
+ const m=metric(id),v=game.metrics[id],threshold=thresholdFor(id);
+ const dangerText=INSTANT_FAILURE_IDS.includes(id)?'Unter 14 %: Systemausfall.':'Unter 14 %: akute Versorgungsstörung.';
+ return html.div({class:`res res-${tone(v)} ${v<30?'res-urgent':''}`,title:`${m.detail} ${threshold===null?'':`Mindestziel ${threshold} %. `}${dangerText}`},
+  html.div({class:'res-head'},html.span(m.label),html.strong(unit(v))),
+  html.div({class:'mini-track',role:'meter','aria-label':`${m.label}: ${unit(v)}. ${threshold===null?'':`Mindestziel ${threshold} %. `}Kritische Zone unter 14 %.`, 'aria-valuemin':0,'aria-valuemax':100,'aria-valuenow':Math.round(v)},
+   html.i({style:`width:${v}%`}),
+   html.b({class:'failure-zone','aria-hidden':'true'}),
+   threshold===null?null:html.b({class:'target-line',style:`left:${threshold}%`,title:`Mindestziel ${threshold} %`,'aria-hidden':'true'})));
 }
 function markNode(n,select,show){const c=cityXY(n.city),v=game.metrics[n.metric];if(!show)return null;return html.g({class:`net-node net-${tone(v)}`,role:'button',tabindex:'0','aria-label':`${n.name}, ${unit(v)}`,click:()=>select('node',n.id),keydown:e=>{if(e.key==='Enter')select('node',n.id);}},
  html.circle({cx:c.x,cy:c.y,r:13,class:'node-halo'}),
